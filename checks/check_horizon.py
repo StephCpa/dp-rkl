@@ -137,8 +137,8 @@ def check_class(sigma=0.01, n_pol=64, trials=1500, Hs=(2, 4, 6, 8, 10, 12)):
         y = LP[0] + rng.normal(size=(trials, w.size)) * sigma / np.sqrt(w)
         erm = np.sum(NU * LP, axis=1)[None, :] - y @ NU.T
         ls = np.sum(w * LP**2, axis=1)[None, :] - 2.0 * y @ (LP * w).T
-        r_erm = risk[np.argmin(erm, axis=1)].mean() / sigma**2
-        r_ls = risk[np.argmin(ls, axis=1)].mean() / sigma**2
+        r_erm = risk[chk.argmin('D plug-in scores', erm)].mean() / sigma**2
+        r_ls = risk[chk.argmin('D least-squares scores', ls)].mean() / sigma**2
         out.append((r_erm, r_ls))
         print(f"   {H:3d}   {r_erm:11.2f}   {r_ls:12.2f}   {r_erm / r_ls:5.2f}")
     out = np.array(out); lh = np.log(np.array(Hs, dtype=float))

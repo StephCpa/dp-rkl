@@ -1,8 +1,8 @@
 # Private feedback design for reverse-KL distillation: theory note (12 Nov 2026)
 
-Builds on Liu, Wei, Zimmert, "Reverse-KL Policy Distillation: Statistical Guarantees and Limits" (arXiv 2610.30844), read through an automated extraction; verify theorem numbers against the PDF before citing. Setting is the private-teacher model of DP-OPD-004 (claude/dp-opd-ier.md). It settles, in a restricted model, conjecture ④ of claude/dp-opsd-feasibility.md. Checks: checks/check_feedback_design.py (§2–4, §8), check_horizon.py (§9), check_review.py (§10), check_tournament.py (§11), check_hybrid.py (§12) and check_round2.py (§13); run_all.py runs them all.
+Builds on Liu, Wei, Zimmert, "Reverse-KL Policy Distillation: Statistical Guarantees and Limits" (arXiv 2610.30844), read through an automated extraction; verify theorem numbers against the PDF before citing. Setting is the private-teacher model of DP-OPD-004 (claude/dp-opd-ier.md). It settles, in a restricted model, conjecture ④ of claude/dp-opsd-feasibility.md. Checks: checks/check_feedback_design.py (§2–4, §8), check_horizon.py (§9), check_review.py (§10), check_tournament.py (§11), check_hybrid.py (§12), check_round2.py (§13) and check_round3.py (§14); run_all.py runs them all.
 
-**Revised 13 Nov 2026 after an external review** (§10: Corollary 6 replaced by Proposition 6′, lower bounds restated for normalized teachers, H² claim restricted to the plug-in) **and again 16 Nov 2026 after a second review** (§13: a constant corrected, lower bounds fully specified, the tournament's design quantity shown to depend on class complexity, a paired design × selector experiment, failure assertions in every script).
+**Revised 13 Nov 2026 after an external review** (§10: Corollary 6 replaced by Proposition 6′, lower bounds restated for normalized teachers, H² claim restricted to the plug-in) **and again 16 Nov 2026 after a second review** (§13, with four corrections from the re-review of PR #1 in §14: a constant corrected, lower bounds fully specified, the tournament's design quantity shown to depend on class complexity, a paired design × selector experiment, failure assertions in every script).
 
 ## 0. Results at a glance
 
@@ -21,8 +21,8 @@ Builds on Liu, Wei, Zimmert, "Reverse-KL Policy Distillation: Statistical Guaran
 | P11 | Lower bounds, H steps, proper learners: realizable risk ≥ H·min{0.0073·(Δ/μ)², 0.058·Δ/μ}; with C_app = 1 the excess risk is ≥ 0.06·H·Δ/μ | Proved for μ ≤ 1 and the mechanism class of §13.2 (repeated binary construction) |
 | L12–T14 | H>1, shared-mass tournament: L(π̂) ≤ (14 + 616·B̄)·L* + (64 + 2560·B̄)·Γ_T(w)·(Δ/μ)²·ι, with B̄ the largest pathwise KL sum in the class and Γ_T(w) a public design quantity | Proved (own proof; constants crude; the 79 of the first version was a rounding error, now 80). Every proof step verified exactly on 800 ordered pairs. Two limits: the B̄ factor is real (trap instance, §12), and Γ_T is a class-complexity quantity that bounded B̄ does not control (§13.1) |
 | P15 | Hybrid (plug-in elimination with publicly known noise levels, then tournament among survivors) satisfies the smaller of the T9-type and T14 bounds | Proved. In simulation it coincides with the tournament unless the noise is near zero, so the practical gain is small |
-| P16 | Anchor-normalized plug-in: L(π̂) ≤ 3·L* + 4·A_q + 32·κ·H·(Δ/μ)²·ι, where A_q is the anchor's local KL to the teacher along the candidates' occupancies. No B̄, floor linear in H, at the price of the additive anchor term | Proved (own proof, new on 16 Nov, not externally checked); variance bound checked exactly; in the paired experiment it removes the plug-in's H² behaviour |
-| P17 | min_w Γ_T(w) ≤ E(Π) = Σ_z max_π ν^π(z), the occupancy envelope mass; an H = 1 class with pathwise KL < 1 has min_w Γ_T ≈ d/log d | Proved; example certified by a dual bound (gap ≤ 0.32%) |
+| P16 | Anchor-normalized plug-in, any design covering the candidates: L(π̂) ≤ 3·L* + 4·A_q + 32·κ·H·(Δ/μ)²·ι, where A_q is the anchor's local KL to the teacher along the candidates' occupancies. Sharper form: 3·L* + 2·osc(C_q) + 32·κ·H·σ²·ι + 2·√(64·κ·H·σ²·ι·A_q). A design-weighted projection variant (P16′) has its own bias term | Proved (own proof; the reviewer of PR #1 checked P16 under its stated conditions; P16′ and the sharper form are new in §14 and unreviewed). The anchor term cannot be dropped: a realizable zero-noise instance selects a wrong candidate (§14) |
+| P17 | min_w Γ_T(w) ≤ E(Π) = Σ_z max_π ν^π(z), the occupancy envelope mass, with H ≤ E ≤ Σ_h min{\|Π\|, d^h} ≤ H·\|Π\|; an H = 1 class with pathwise KL < 1 has min_w Γ_T ≈ d/log d | Proved. The first version's bound E ≤ H·min{d, \|Π\|} was wrong for H > 1 and is withdrawn (§14) |
 | §10 | Misspecified teacher: plug-in stays at L* for small noise, least squares sits at about 4·L* at every noise level; least squares wins only once privacy noise dominates | Simulation on one constructed family |
 
 ## 1. Model
@@ -426,7 +426,7 @@ I had the review's summary but not its full report, so every point below was re-
 
 ### 13.1 Γ_T is a class-complexity quantity
 
-**Proposition 17 (envelope bound).** Let E(Π) = Σ_z max_{π∈Π} ν^π(z), the occupancy envelope mass (H ≤ E ≤ H·min{d, |Π|}). Then min_w Γ_T(w) ≤ Γ_T(w_env) ≤ E(Π) for w_env ∝ max_π ν^π.
+**Proposition 17 (envelope bound).** Let E(Π) = Σ_z max_{π∈Π} ν^π(z), the occupancy envelope mass. In general H ≤ E ≤ Σ_h min{|Π|, d^h} ≤ H·|Π| (at step h there are d^h state-action pairs, each with envelope at most 1, and the envelope is at most the sum over candidates). The bound E ≤ H·min{d, |Π|} stated in the first version holds only for H = 1; see §14.1. Then min_w Γ_T(w) ≤ Γ_T(w_env) ≤ E(Π) for w_env ∝ max_π ν^π.
 
 Proof. For any pair, c_p(z)²/w_env(z) = E·m(s)²(π−π′)²/env(z) ≤ E·m(s)·(π−π′)²/max(π, π′), because env(z) ≥ m(s)·max(π, π′)(a|s). Summing over z gives E·S̃_p. ∎
 
@@ -462,7 +462,7 @@ All four bounds are for learners that output an element of Π, hold for any numb
 
 ### 13.3 Paired experiment: design × selector × candidate class
 
-Setup (check_round2.py). Ten independent class seeds per class; the seed is the statistical unit. Within a seed, the same 300 standard-normal draws are used for every design. Intervals are paired 95% t-intervals over seeds. Designs: mixprod (d_mix ⊗ q̄, used in §9–12), occmix (true mixture of occupancies), envelope (∝ max_π ν^π), optimal (Γ_T-minimax, mixed 90/10 with occmix for full support; dual gap ≤ 0.68%). Selectors: plug-in, anchor-normalized plug-in (§13.4), log-space least squares, tournament.
+Setup (check_round2.py; anchor columns and dual gaps corrected in §14). Ten independent class seeds per class; the seed is the statistical unit. Within a seed, the same 300 standard-normal draws are used for every design. Intervals are paired 95% t-intervals over seeds. Designs: mixprod (d_mix ⊗ q̄, used in §9–12), occmix (true mixture of occupancies), envelope (∝ max_π ν^π), optimal (Γ_T-minimax, mixed 90/10 with occmix for full support; dual gap ≤ 0.68%). Selectors: plug-in, anchor-normalized plug-in (§13.4), log-space least squares, tournament.
 
 Selectors under the mixprod design, mean over seeds (standard error):
 
@@ -488,12 +488,12 @@ Reading.
 - The Γ_T-optimal design lowers Γ_T by 13% to 89% and improves tournament risk in one class, is indistinguishable in one, and is worse in three. Γ_T is a worst-pair quantity that makes Theorem 14 hold; the pairs that decide the risk are the ones near the best candidate, and the minimax design moves precision away from them. The mixture designs are the robust choice; occmix and mixprod are indistinguishable.
 - Risk does not track Γ_T or the envelope mass across classes either (the wide class has Γ_T/H = 4.06 and lower risk than the narrow one), so these quantities should be read as sufficient conditions, not predictors.
 - The anchor-normalized plug-in removes the plug-in's H² behaviour: it matches least squares and the tournament on realizable classes (paired difference to the plug-in −23 to −45 σ²), is second to the tournament when misspecified (+0.26 [0.21, 0.30] L*), and is better than the tournament on the trap (−0.44 [−0.58, −0.30] L*).
-- Design matters most on the trap, and not for the tournament: with the envelope design, least squares reaches 1.10·L* and the anchor-normalized plug-in 1.33·L*, while the tournament stays at 3.09·L*. The envelope puts precision inside the rarely visited subtree where the trap candidates fail; the tournament's shared-mass weights ignore that subtree whatever the design.
+- Design matters most on the trap, and not for the tournament: with the envelope design, least squares reaches 1.10·L*, the projected anchor variant 1.33·L* and the Proposition 16 estimator 1.75·L*, while the tournament stays at 3.09·L*. The envelope puts precision inside the rarely visited subtree where the trap candidates fail; the tournament's shared-mass weights ignore that subtree whatever the design.
 - No selector or design dominates. These are still five synthetic class families.
 
 ### 13.4 Proposition 16: anchor-normalized plug-in
 
-This is the "normalized post-processing" baseline, made linear so that it can be analysed. Fix a public anchor policy q (the experiments use q̄, the state-wise average of the candidates' action laws) and a product-form design w(s, a) = ω(s)·q(a|s). Projecting each state's release onto the first-order normalization constraint at the anchor turns the plug-in into
+This is the "normalized post-processing" baseline, made linear so that it can be analysed. Fix a public anchor policy q (the experiments use q̄, the state-wise average of the candidates' action laws) and, for this subsection, a product-form design w(s, a) = ω(s)·q(a|s); §14.3 states the result for any design and separates it from the projection variant. Projecting each state's release onto the first-order normalization constraint at the anchor turns the plug-in into
 
   Ĵ(π) = Σ_s d^π(s)·[Σ_a π log π − Σ_a q log q − ⟨π_s − q_s, y_s⟩],  E Ĵ(π) = J(π) = L(π) − C_q(π),
 
@@ -539,4 +539,101 @@ The four selectors now trade off differently:
 ### 13.8 Where the direction stands
 
 The review's main thread holds up: within one private-teacher release channel, the noise caused by occupancy shift can be removed in two different ways while keeping a reverse-KL approximation term, by comparing candidates on shared mass (tournament) or by measuring them against a public anchor (anchor-normalized plug-in). Each pays for it differently, in B̄ and class spread or in anchor quality. Precision allocation matters for the per-position variance (§2, §4) but, in these experiments, optimizing the design for the tournament's bound did not reduce risk. Open: whether one rule can avoid both the trap and the anchor term, the corresponding lower bound, and everything in §13.7.
+
+## 14. Re-review of PR #1 (commit f0a357e), 17 Nov 2026
+
+The re-review confirmed the main experiment (including the design conclusion after a Holm correction) and the proof of Proposition 16, and found four things to fix before merging. All four are correct. I did not have the review's archive, so the counterexamples below are my own constructions (check_round3.py).
+
+| Review point | Verdict after checking | Change |
+|---|---|---|
+| 1. E ≤ H·min{d, \|Π\|} is false on multi-step trees | Correct. My instance: H = 2, d = 2, four full-support candidates, E = 5.80 > 4 | Bound replaced by E ≤ Σ_h min{\|Π\|, d^h} ≤ H·\|Π\|; Γ_T(w_env) ≤ E is unaffected |
+| 2. Filtering pairs with S ≤ 1e-14 distorts the design certificate; exact duplicates raise | Correct. My instance: reported 0.96, true Γ_T = 1.1·10⁷ | Pairs are rescaled, never thresholded; only exactly identical pairs are excluded; an empty set gives Γ_T = 0 |
+| 3. Non-finite scores evade the checks | Correct. With NaN noise all selectors returned finite risks | Inputs and scores are checked before every argmin; a negative test confirms the Checker now fails |
+| 4. The anchor estimator implemented under non-product designs is not the one in P16 | Correct | P16 restated for any design; the projection variant gets its own statement (P16′); both are now run and reported separately |
+| Dual gap ≤ 0.68% refers to the pre-mixture solution | Correct | Gap of the 90/10 design actually used is now reported: up to 8.45% |
+
+### 14.1 Envelope mass
+
+Counterexample to the withdrawn bound: binary tree, H = 2, four candidates that each put 98% of their mass on a different second-step state-action pair (minimum probability 0.01). The envelope has mass about 2 at step 1 and about 4 at step 2: E = 5.80, against H·min{d, |Π|} = 4. The correct bound Σ_h min{|Π|, d^h} equals 6 here. For large H the envelope mass of a spread-out class can therefore grow like H·|Π|, which strengthens the point of §13.1: the tournament's floor is linear in H only for classes whose occupancies overlap.
+
+### 14.2 Near-duplicate candidates
+
+The ratio [Σ_z c_p²/w]/S̃_p does not change when π − π′ is rescaled, so a pair that differs by 10⁻⁸ has a well-defined, finite ratio and can be the pair that determines Γ_T. Thresholding on the unnormalized S̃ removed such pairs. Instance: three policies on four actions, two of them differing by 10⁻⁸ on the last two actions and the third differing on the first two. The old filter drops the near-duplicate pair, the optimizer then puts almost no precision on the last two actions and reports 0.96, while Γ_T of that same design over all pairs is 1.1·10⁷. With all pairs kept the optimum is 1.2267, certified by the dual bound to four decimals.
+
+Fix (checks/_pairs.py): each pair is divided by max|π − π′| before the ratio is formed. A pair is excluded only if it is exactly identical on its shared mass; its statistic is then identically zero with zero variance. If no pair remains, Γ_T is 0 and nothing raises.
+
+A consequence worth stating: Γ_T is a supremum of ratios, so it can be dominated by a pair of nearly identical candidates whose comparison is irrelevant to the risk. This is another reason it does not predict risk (§13.3). A version of Theorem 14 that discards pairs below a risk tolerance at the cost of an additive term is plausible but not proved.
+
+### 14.3 Proposition 16 for any design, the projection variant, and a sharper form
+
+**Proposition 16 (restated).** The estimator is Ĵ(π) = Σ_s d^π(s)·[Σ_a π log π − Σ_a q log q − ⟨π_s − q_s, y_s⟩], defined without reference to the design. For any design with H·κ·w(s, a) ≥ d^π(s)·max(π, q)(a|s), the bound L(π̂) ≤ 3·L* + 4·A_q + 32·κ·H·σ²·ι holds; the proof in §13.4 never used the product form. The product form only served to identify Ĵ with a projection.
+
+**Proposition 16′ (design-weighted projection).** Let α_s(π) = [Σ_a ν^π(s, a)·q(a|s)/w(s, a)] / [Σ_a q(a|s)²/w(s, a)] and Ĵ_w(π) = L̂(π) with y_s replaced by its w-weighted projection off the anchor direction, so that the coefficient at state s is ν^π(s, ·) − α_s(π)·q_s. Then E Ĵ_w(π) = L(π) − C^w_q(π) with C^w_q(π) = Σ_s α_s(π)·KL(q_s‖π*_s), and under the same coverage condition
+
+  L(π̂) ≤ 3·L* + 2·A^w_q + 2·A_q + 32·κ·H·σ²·ι,  A^w_q = max_π C^w_q(π).
+
+Proof. α_s(π) minimizes Σ_a (ν^π(s, a) − α·q(a|s))²/w(s, a) over α, so the variance of Ĵ_w(π) is at most that of Ĵ(π), which is ≤ 8κHσ²·(L(π) + C_q(π)). The bias is C^w_q, with α_s ≥ 0. Repeat the algebra of Proposition 16 with the bias bounded by A^w_q and the variance by the A_q form. ∎
+
+For w(s, a) = ω(s)·q(a|s), α_s(π) = d^π(s) and the two estimators coincide. This is what the mixprod rows of §13.3 used, so those results stand. Under the other designs the first version ran the projection variant while citing Proposition 16; both are now run.
+
+**Sharper form of Proposition 16.** With osc(C_q) = max_π C_q(π) − min_π C_q(π) and a₂ = 32κHσ²ι:
+
+  L(π̂) ≤ 3·L* + 2·osc(C_q) + a₂ + 2·√(2·a₂·A_q).
+
+Proof. From x − C_q(π̂) ≤ L* − C_q(π^b) + √(a₂(x + L* + 2A_q)), bound the bias difference by osc(C_q) and split the root: √(a₂(x + L*)) + √(2a₂A_q) ≤ (x + L*)/2 + a₂/2 + √(2a₂A_q). ∎
+
+So an anchor that is wrong by the same amount everywhere costs only through the noise cross-term; an anchor whose error differs between regions that different candidates visit costs linearly. The sweep below shows exactly this split.
+
+**The anchor term cannot be dropped.** Instance (H = 2, binary): the teacher goes right with probability 1% and plays action a there; candidate 1 goes right with probability 99% and otherwise copies the teacher; two more candidates copy the teacher at the root and play b on the right. The teacher is in the class, there is no noise, and the anchor is the candidate mean. The anchor is far from the teacher on the right (local KL 9.7), candidate 1 spends 99% of its time there, and the estimator selects it: risk 4.50 against L* = 0. Proposition 16 allows this (3L* + 4A_q = 40.7). The review reports an analogous instance with risk 1.614.
+
+### 14.4 Corrected numbers for §13.3
+
+Mixprod rows are unchanged. Anchor estimators under the other designs, mean over seeds:
+
+| Class | Unit | Design | Proposition 16 estimator | Projection variant (P16′) |
+|---|---|---|---|---|
+| Realizable, wide spread | σ² | envelope | 17.94 | 16.46 |
+| Realizable, wide spread | σ² | optimal | 14.28 | 13.89 |
+| Trap | L* | occmix | 2.99 | 2.62 |
+| Trap | L* | envelope | 1.75 | 1.33 |
+| Trap | L* | optimal | 2.93 | 2.84 |
+
+Paired difference, projection minus Proposition 16 estimator, under the envelope design: −1.47 [−2.27, −0.68] σ² (wide class) and −0.42 [−0.47, −0.36] L* (trap); within noise for the 16-policy class. The projection variant was never worse on average, consistent with its smaller variance, but its bias term is a different object.
+
+Dual gap of the Γ_T-optimal design: the certificate applies to the pure minimax solution (gap ≤ 0.68%). The 90/10 mixture actually used in the experiment is further from the certified bound: at most 1.15%, 1.65%, 5.17%, 3.39% and 8.45% in the five classes. The conclusion about the design (better in one class, unresolved in one, worse in three) concerns that mixture.
+
+### 14.5 H × anchor-quality sweep
+
+Realizable binary class (teacher plus 31 tilts), σ = 0.01, 8 class seeds, product design ω(s)·q(a|s) built from each anchor, Proposition 16 estimator. Slopes are per-seed log-log fits over H = 4..12 with a 95% t-interval. Risk in units of σ²:
+
+| Anchor | H=2 | H=6 | H=12 | Slope in H | Zero-noise risk, H=12 | A_q, H=12 |
+|---|---|---|---|---|---|---|
+| Teacher itself | 1.76 | 7.21 | 15.67 | 1.13 [1.06, 1.20] | 0 | 0 |
+| Teacher, uniform tilt 0.05 | 1.76 | 7.22 | 15.99 | 1.16 [1.09, 1.22] | 0 | 142 |
+| Teacher, uniform tilt 0.15 | 1.81 | 8.19 | 16.91 | 1.13 [1.04, 1.23] | 0 | 1,267 |
+| Teacher, uniform tilt 0.4 | 2.11 | 11.28 | 29.90 | 1.43 [1.31, 1.56] | 0.24 | 8,544 |
+| Teacher, tilt 0.4 in half the tree | 5.95 | 50.50 | 106.27 | 1.36 [1.10, 1.63] | 47.5 | 4,624 |
+| Teacher, tilt 1.5 in half the tree | 213.4 | 1,038 | 2,884 | 1.39 [0.94, 1.85] | 2,998 | 32,799 |
+| Candidate mean | 1.76 | 7.26 | 15.60 | 1.11 [1.04, 1.18] | 0 | 18 |
+| Plug-in (reference) | 2.41 | 24.14 | 92.33 | 2.04 [1.96, 2.12] | | |
+| Tournament (reference) | 1.77 | 7.19 | 15.53 | 1.12 [1.04, 1.20] | | |
+
+Reading.
+- With a good anchor the slope is about 1.1, the same as the tournament, and its interval excludes the plug-in's 2. This is the first empirical evidence for the H scaling of Proposition 16; the earlier experiments fixed H.
+- A_q itself is a poor predictor. A uniformly tilted anchor has A_q up to 1,267·σ² and loses almost nothing, because its error is the same wherever the candidates go and cancels in comparisons. The sharper form in §14.3 accounts for this: only the oscillation of the anchor term enters linearly.
+- An anchor that is wrong in half the tree is costly even without noise (zero-noise risk 47.5·σ² and 2,998·σ²), and its H scaling is not clean. This is the regime the anchor instance in §14.3 isolates.
+- The anchors here are built from the teacher, so this is again a conditional channel experiment. Only the candidate-mean anchor is public as it stands.
+
+### 14.6 Scripts
+
+- checks/_checks.py has a checked argmin; every selection from noisy scores in all scripts goes through it, and releases and pair statistics are checked for finiteness. check_round3.py injects NaN noise and asserts that the Checker fails (it records 6 failures), and that clean input records none.
+- Seven scripts, 3,346 assertions, all passing with --strict on Python 3.13.18, NumPy 2.5.3, SciPy 1.18.1. The review could not reproduce strict mode on the pinned environment because of a download failure on its side, and sees matrix-product warnings under older local dependencies; I still cannot reproduce those warnings here.
+- §12.4's table is unchanged by the pair-handling fix (those classes contain no near-duplicate pairs).
+
+### 14.7 Still open
+
+- The source paper's theorem numbers and truncation operator, unverified against its full text.
+- External checking of Lemma 12, Theorem 14, Propositions 15 and 17, and of the new Proposition 16′ and the sharper form of Proposition 16.
+- Finite-rollout implementations and checks on neighbouring teachers.
+- A public anchor: the sweep shows what a good anchor buys, not where one comes from.
 

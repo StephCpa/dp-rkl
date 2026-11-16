@@ -12,7 +12,7 @@ import sys
 import time
 
 SCRIPTS = ["check_feedback_design.py", "check_horizon.py", "check_review.py", "check_tournament.py",
-           "check_hybrid.py", "check_round2.py"]
+           "check_hybrid.py", "check_round2.py", "check_round3.py"]
 
 
 def main():

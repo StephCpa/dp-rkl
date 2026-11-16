@@ -18,7 +18,8 @@ Status: a working research note, not a finished paper. Several proofs have not b
 | `checks/check_tournament.py` | Shared-mass tournament: transfer lemma, variance bound, simulations (§11) |
 | `checks/check_hybrid.py` | Step-by-step proof check, trap instance, hybrid selector, design quantity (§12) |
 | `checks/check_round2.py` | Class-complexity example with dual certificate, anchor-normalized plug-in, paired design × selector experiment (§13) |
-| `checks/_checks.py`, `checks/run_all.py` | Failure assertions shared by all scripts; a single entry point |
+| `checks/check_round3.py` | Counterexamples from the PR #1 re-review, a negative test of the failure detection, and the H × anchor-quality sweep (§14) |
+| `checks/_checks.py`, `checks/_pairs.py`, `checks/run_all.py` | Failure assertions and the scale-invariant pair structure shared by the scripts; a single entry point |
 | `reviews/2026-11-12-integration-points.md` | An earlier list of candidate DP integration points that the note responds to |
 | `reviews/2026-11-13-external-review.md` | External review of the first two passes; §10 of the note answers it |
 
@@ -27,7 +28,7 @@ Status: a working research note, not a finished paper. Several proofs have not b
 ```
 pip install -r requirements.txt      # pinned: numpy 2.5.3, scipy 1.18.1 (run on Python 3.13)
 cd checks
-python run_all.py                    # all six scripts; add --strict to turn RuntimeWarnings into errors
+python run_all.py                    # all seven scripts; add --strict to turn RuntimeWarnings into errors
 python check_round2.py               # or any single script
 ```
 

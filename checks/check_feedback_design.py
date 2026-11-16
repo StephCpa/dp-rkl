@@ -179,9 +179,9 @@ def check_selection(d=64, n_pol=128, trials=4000):
     for dm in [0.0, 0.005, 0.02, 0.05, 0.1, 0.2]:
         # weighted full release: aggregate noise is exactly N(0, (Delta/mu)^2 / q_a), any T
         y = ell + rng.normal(size=(trials, d)) * dm / np.sqrt(q)
-        r_w = risk[np.argmin(ent[None, :] - y @ Pi.T, axis=1)].mean()
+        r_w = risk[chk.argmin('6 weighted-full scores', ent[None, :] - y @ Pi.T)].mean()
         y = ell + rng.normal(size=(trials, d)) * dm * np.sqrt(d)
-        r_h = risk[np.argmin(ent[None, :] - y @ Pi.T, axis=1)].mean()
+        r_h = risk[chk.argmin('6 homoscedastic scores', ent[None, :] - y @ Pi.T)].mean()
         row = []
         for T in [10**1, 10**2, 10**3, 10**5]:
             n = rng.multinomial(T, q, size=trials) / T                       # empirical action freq
@@ -189,7 +189,7 @@ def check_selection(d=64, n_pol=128, trials=4000):
             centred = ell - np.log(q)
             corr = (n * centred + zeta) @ (Pi / q).T                         # IW estimate of <pi, ell - log q>
             est = ent[None, :] - (Pi @ np.log(q))[None, :] - corr
-            row.append(risk[np.argmin(est, axis=1)].mean())
+            row.append(risk[chk.argmin('6 sampled scores', est)].mean())
         chk.finite(f"6 risks at Delta/mu={dm}", [r_w, r_h] + row)
         chk.le(f"6 weighted full <= homoscedastic full at Delta/mu={dm}", r_w, r_h, tol=1e-12)
         if dm >= 0.02:

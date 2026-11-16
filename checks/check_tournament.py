@@ -102,6 +102,7 @@ def pair_tables(pols, t, w):
 def tournament(y, pairs, C, const, n):
     """Delta_hat[i, j] estimates T_j(pi_i) - T_i(pi_j); select argmin_i max_j Delta_hat[i, j]."""
     D = const[None, :] - y @ C.T                                      # (trials, n_pairs)
+    chk.finite('tournament pair statistics', D)
     full = np.zeros((y.shape[0], n, n))
     full[:, pairs[:, 0], pairs[:, 1]] = D
     full[:, pairs[:, 1], pairs[:, 0]] = -D
@@ -116,8 +117,8 @@ def select_all(pols, t, sigma, trials, w=None):
     risk = np.sum(NU * (LP - t.logp), axis=1)
     T, pairs, C, const, kap = pair_tables(pols, t, w)
     y = t.logp + rng.normal(size=(trials, w.size)) * sigma / np.sqrt(w)
-    i_erm = np.argmin(np.sum(NU * LP, axis=1)[None, :] - y @ NU.T, axis=1)
-    i_ls = np.argmin(np.sum(w * LP**2, axis=1)[None, :] - 2.0 * y @ (LP * w).T, axis=1)
+    i_erm = chk.argmin('plug-in scores', np.sum(NU * LP, axis=1)[None, :] - y @ NU.T)
+    i_ls = chk.argmin('least-squares scores', np.sum(w * LP**2, axis=1)[None, :] - 2.0 * y @ (LP * w).T)
     i_tr = tournament(y, pairs, C, const, n)
     return risk, (risk[i_erm], risk[i_ls], risk[i_tr]), kap, T
 

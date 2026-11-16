@@ -11,6 +11,7 @@
 """
 import numpy as np
 from _checks import Checker
+import _pairs
 
 chk = Checker("check_hybrid")
 from check_tournament import Policy, binary_policy, design, local_kl, pair_tables, pathwise_max
@@ -128,8 +129,9 @@ def run_selectors(pols, t, sigma, trials, w, delta=0.1):
     T, pairs, C, const, kap = pair_tables(pols, t, w)
     y = t.logp + rng.normal(size=(trials, w.size)) * sigma / np.sqrt(w)
     Lhat = np.sum(NU * LP, axis=1)[None, :] - y @ NU.T
-    i_erm = np.argmin(Lhat, axis=1)
+    i_erm = chk.argmin('plug-in scores', Lhat)
     D = const[None, :] - y @ C.T
+    chk.finite('tournament pair statistics', D)
     full = np.zeros((trials, n, n))
     full[:, pairs[:, 0], pairs[:, 1]] = D
     full[:, pairs[:, 1], pairs[:, 0]] = -D
@@ -236,15 +238,13 @@ def check_hybrid_elsewhere(trials=1000):
 
 # ---------------------------------------------------------------- S4
 def gamma_T(C, S_tilde, w):
-    ok = S_tilde > 1e-14                       # pairs identical on their shared mass have S = 0; skip them
-    return float(((C[ok] ** 2 @ (1.0 / w)) / S_tilde[ok]).max())
+    return float(((C**2 @ (1.0 / w)) / S_tilde).max())       # callers pass only valid, rescaled pairs
 
 
 def optimal_design(C, S_tilde, w0, iters=400, eta=0.5):
     """min_w max_pairs sum_z C_p(z)^2 / (w(z) S_p): multiplicative weights on pairs, best response in w
     (for fixed pair weights lam, the best w is proportional to sqrt(sum_p lam_p C_p^2 / S_p))."""
-    ok = S_tilde > 1e-14
-    A = C[ok] ** 2 / S_tilde[ok][:, None]
+    A = C**2 / S_tilde[:, None]
     lam = np.full(A.shape[0], 1.0 / A.shape[0])
     best_w, best = w0, gamma_T(C, S_tilde, w0)
     w_avg = np.zeros_like(w0)
@@ -276,14 +276,10 @@ def check_design(n_pol=64):
         else:
             t, pols = misspecified_class(H)
         w = design(pols)
-        T, pairs, C, const, kap = pair_tables(pols, t, w)
-        S = []
-        for i, j in pairs:
-            m = np.minimum(pols[i].dS, pols[j].dS)
-            S.append(m @ np.sum((pols[i].A - pols[j].A) ** 2 / np.maximum(pols[i].A, pols[j].A), axis=1))
-        S = np.array(S)
-        ok = S > 1e-14
-        lower = float((np.abs(C[ok]).sum(axis=1) ** 2 / S[ok]).max())
+        T, pairs, C_raw, const, kap = pair_tables(pols, t, w)
+        _, _, _, Cn, Sn, valid = _pairs.pair_struct(pols)          # scale-invariant; keeps near-duplicate pairs
+        C, S = Cn[valid], Sn[valid]
+        lower = float((np.abs(C).sum(axis=1) ** 2 / S).max())
         w_opt, g_opt = optimal_design(C, S, w)
         chk.le(f"S4 optimal <= mixture, {kind} H={H}", g_opt, gamma_T(C, S, w), tol=1e-9)
         chk.le(f"S4 single-pair lower bound <= optimal, {kind} H={H}", lower, g_opt, tol=1e-6 * g_opt)

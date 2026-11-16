@@ -153,7 +153,7 @@ def check_misspecified(Hs=(2, 4, 6, 8), sigmas=(0.0, 0.01, 0.03, 0.1, 0.3), tria
             y = t_occ[2] + rng.normal(size=(trials, w.size)) * s / np.sqrt(w)
             erm = np.sum(NU * LP, axis=1)[None, :] - y @ NU.T
             ls = np.sum(w * LP**2, axis=1)[None, :] - 2.0 * y @ (LP * w).T
-            ie, il = np.argmin(erm, axis=1), np.argmin(ls, axis=1)
+            ie, il = chk.argmin('R3 plug-in scores', erm), chk.argmin('R3 least-squares scores', ls)
             re, rl = risk[ie], risk[il]
             chk.finite(f"R3 risks H={H} sigma={s}", [re.mean(), rl.mean()])
             if s == 0.0:

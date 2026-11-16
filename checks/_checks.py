@@ -37,6 +37,15 @@ class Checker:
         if not (lo <= float(value) <= hi):
             self.failures.append(f"{label}: {float(value):.6g} outside [{lo}, {hi}]")
 
+    def argmin(self, label, scores, axis=1):
+        """argmin that refuses non-finite scores. np.argmin on NaN silently returns an index, so a selector
+        fed NaN would otherwise report the (finite) true risk of an arbitrary candidate."""
+        self.count += 1
+        scores = np.asarray(scores, dtype=float)
+        if not np.all(np.isfinite(scores)):
+            self.failures.append(f"{label}: non-finite score before argmin")
+        return np.argmin(scores, axis=axis)
+
     def finish(self):
         if self.failures:
             print(f"\n{self.name}: {len(self.failures)} of {self.count} checks FAILED")

@@ -10,7 +10,9 @@
                 occmix   = true mixture of the candidates' occupancies
                 envelope = proportional to max_pi nu^pi
                 optimal  = minimax design for Gamma_T (90%) mixed with occmix (10%) to keep full support
-     Selectors: plug-in, plug-in with anchor-linearized normalization, log-space least squares, tournament.
+     Selectors: plug-in; anchor-normalized plug-in as in Proposition 16 (anchor subtracted on the candidate's
+                own states, any design); its design-weighted projection variant (Proposition 16');
+                log-space least squares; tournament.
 
 Everything public (candidates, designs) is computed without the teacher. The classes themselves are still
 generated around the teacher, so this is a conditional channel experiment, not an end-to-end DP pipeline.
@@ -20,72 +22,19 @@ import check_tournament as ct
 import check_hybrid as ch
 from check_tournament import Policy, pathwise_max
 from _checks import Checker
+from _pairs import pair_struct, gamma_T, optimal_design
 
 chk = Checker("check_round2")
 T975 = {4: 2.776, 7: 2.365, 9: 2.262, 11: 2.201}       # two-sided 95% t quantiles by degrees of freedom
 
 
-# ---------------------------------------------------------------- public pair structure and designs
-def pair_struct(pols):
-    """Public quantities only. Degenerate pairs (identical on their shared mass) are kept for the
-    tournament, where their statistic is exactly zero, and excluded from Gamma_T (their S is zero)."""
-    n = len(pols)
-    pairs, C, const, S = [], [], [], []
-    for i in range(n):
-        for j in range(i + 1, n):
-            m = np.minimum(pols[i].dS, pols[j].dS)
-            diff = pols[i].A - pols[j].A
-            pairs.append((i, j))
-            C.append((m[:, None] * diff).ravel())
-            const.append(m @ (pols[i].ent - pols[j].ent))
-            S.append(m @ np.sum(diff**2 / np.maximum(pols[i].A, pols[j].A), axis=1))
-    return np.array(pairs), np.array(C), np.array(const), np.array(S)
-
-
-def gamma_T(C, S, w):
-    ok = S > 1e-14
-    return float(((C[ok] ** 2 @ (1.0 / w)) / S[ok]).max())
-
-
-def optimal_design(C, S, iters=3000):
-    """min_w max_p sum_z C_p(z)^2 / (w(z) S_p), with a dual certificate.
-    For pair weights lam on the simplex, min_w sum_z b(z)/w(z) = (sum_z sqrt b(z))^2 with b = lam @ A, so
-    (sum_z sqrt(lam @ A))^2 is a lower bound on the minimax value for every lam. Exponentiated-gradient
-    ascent on that concave dual; the primal iterate is the best response w ∝ sqrt(lam @ A)."""
-    ok = S > 1e-14
-    A = C[ok] ** 2 / S[ok][:, None]
-    lam = np.full(A.shape[0], 1.0 / A.shape[0])
-    ub, lb, best_w = np.inf, 0.0, None
-    lam_avg = np.zeros_like(lam)
-    for it in range(iters):
-        b = lam @ A
-        rb = np.sqrt(b)
-        lb = max(lb, float(rb.sum() ** 2))
-        w = (rb + 1e-300) / (rb.sum() + 1e-300 * rb.size)
-        vals = A @ (1.0 / w)
-        if vals.max() < ub:
-            ub, best_w = float(vals.max()), w
-        lam_avg += lam
-        if it % 50 == 49:                                   # averaged dual iterate: often a better certificate
-            la = lam_avg / (it + 1)
-            ra = np.sqrt(la @ A)
-            lb = max(lb, float(ra.sum() ** 2))
-            wa = (ra + 1e-300) / (ra.sum() + 1e-300 * ra.size)
-            va = float((A @ (1.0 / wa)).max())
-            if va < ub:
-                ub, best_w = va, wa
-        eta = 2.0 / np.sqrt(it + 1.0)
-        lam = lam * np.exp(eta * (vals / vals.max() - 1.0))
-        lam /= lam.sum()
-    return best_w, ub, lb
-
-
-def designs_for(pols, C, S):
+# ---------------------------------------------------------------- designs
+def designs_for(pols, Cn, Sn, valid):
     H = pols[0].H
     NU = np.array([p.nu for p in pols])
     occmix = NU.mean(axis=0) / H
     env = NU.max(axis=0)
-    w_opt, ub, lb = optimal_design(C, S)
+    w_opt, ub, lb = optimal_design(Cn, Sn, valid, occmix)
     out = {
         "mixprod": ct.design(pols),
         "occmix": occmix,
@@ -111,8 +60,8 @@ def check_complexity():
             keep = [2 * j for j in range(d)] + [2 * j + 1 for j in range(0, d, 4)]
             pols = [pols[i] for i in sorted(set(keep))]
         B = max(pathwise_max(p, teacher) for p in pols)
-        pairs, C, const, S = pair_struct(pols)
-        w, ub, lb = optimal_design(C, S, iters=1500)
+        pairs, C, const, Cn, Sn, valid = pair_struct(pols)
+        w, ub, lb = optimal_design(Cn, Sn, valid, np.full(d, 1.0 / d), iters=1500)
         env = float(np.array([p.nu for p in pols]).max(axis=0).sum())
         print(f"   {d:4d}   {B:14.3f}   {ub:18.2f}   {lb:10.2f}   {100 * (ub - lb) / ub:5.2f}%   {d / np.log(d):7.2f}"
               f"   {env:10.2f}")
@@ -120,40 +69,46 @@ def check_complexity():
         chk.le(f"A d={d}: dual lower bound <= primal upper bound", lb, ub, tol=1e-6 * ub)
         w_env = np.array([p.nu for p in pols]).max(axis=0); w_env = w_env / w_env.sum()
         chk.le(f"A d={d}: certified lower bound <= envelope mass", lb, env, tol=1e-9 * env)
-        chk.le(f"A d={d}: Gamma_T(envelope design) <= envelope mass", gamma_T(C, S, w_env), env, tol=1e-9 * env)
+        chk.le(f"A d={d}: Gamma_T(envelope design) <= envelope mass", gamma_T(Cn, Sn, valid, w_env), env, tol=1e-9 * env)
         chk.between(f"A d={d}: optimal Gamma_T / (d/log d)", lb / (d / np.log(d)), 0.5, 2.0)
 
 
 # ---------------------------------------------------------------- B
-def selectors(pols, t, sigma, g, w, pairs, C, const):
-    """Risks of the four selectors for one design, given standard-normal draws g shared across designs."""
+def selectors(pols, t, sigma, g, w, pairs, C, const, checker=None):
+    """Risks of the selectors for one design, given standard-normal draws g shared across designs.
+    Every score array is checked for finiteness before its argmin."""
+    ck = chk if checker is None else checker
     n, H = len(pols), pols[0].H
     k = pols[0].A.shape[1]
     NU = np.array([p.nu for p in pols]); LP = np.array([p.logp for p in pols])
     risk = np.sum(NU * (LP - t.logp), axis=1)
     y = t.logp + sigma * g / np.sqrt(w)
+    ck.finite("release y", y)
     c_erm = np.sum(NU * LP, axis=1)
-    i_erm = np.argmin(c_erm[None, :] - y @ NU.T, axis=1)
-    # anchor-linearized normalization: remove, state by state, the w-weighted projection of the release
-    # onto the anchor q_bar, treating <q_bar, log p* - log q_bar> as zero (first-order normalization)
-    qbar = np.mean([p.A for p in pols], axis=0)                               # (n_states, k), public
+    i_erm = ck.argmin("plug-in scores", c_erm[None, :] - y @ NU.T)
+    qbar = np.mean([p.A for p in pols], axis=0)                               # public anchor, (n_states, k)
+    # Proposition 16: subtract the anchor on the candidate's own states, whatever the design.
+    DS = np.array([p.dS for p in pols])                                       # (n, n_states)
+    NUa = (NU.reshape(n, -1, k) - DS[:, :, None] * qbar[None]).reshape(n, -1)
+    c_a = c_erm - DS @ np.sum(qbar * np.log(qbar), axis=1)
+    i_anchor = ck.argmin("anchor scores", c_a[None, :] - y @ NUa.T)
+    # Proposition 16': design-weighted projection of each state's release onto the anchor direction.
+    # Identical to Proposition 16 when w(s, a) = omega(s) q_bar(a|s); different otherwise.
     ws = w.reshape(-1, k)
-    denom = np.sum(qbar**2 / ws, axis=1)
-    alpha = np.einsum("nsa,sa->ns", NU.reshape(n, -1, k), qbar / ws) / denom  # (n, n_states)
-    NUn = (NU.reshape(n, -1, k) - alpha[:, :, None] * qbar[None]).reshape(n, -1)
-    c_n = c_erm - alpha @ np.sum(qbar * np.log(qbar), axis=1)
-    i_norm = np.argmin(c_n[None, :] - y @ NUn.T, axis=1)
-    i_ls = np.argmin(np.sum(w * LP**2, axis=1)[None, :] - 2.0 * y @ (LP * w).T, axis=1)
+    alpha = np.einsum("nsa,sa->ns", NU.reshape(n, -1, k), qbar / ws) / np.sum(qbar**2 / ws, axis=1)
+    NUp = (NU.reshape(n, -1, k) - alpha[:, :, None] * qbar[None]).reshape(n, -1)
+    c_p = c_erm - alpha @ np.sum(qbar * np.log(qbar), axis=1)
+    i_proj = ck.argmin("projected-anchor scores", c_p[None, :] - y @ NUp.T)
+    i_ls = ck.argmin("least-squares scores", np.sum(w * LP**2, axis=1)[None, :] - 2.0 * y @ (LP * w).T)
     D = const[None, :] - y @ C.T
+    ck.finite("tournament pair statistics", D)
     full = np.zeros((g.shape[0], n, n))
     full[:, pairs[:, 0], pairs[:, 1]] = D
     full[:, pairs[:, 1], pairs[:, 0]] = -D
     full[:, np.arange(n), np.arange(n)] = -np.inf
     i_tr = np.argmin(full.max(axis=2), axis=1)
-    out = {"plug-in": risk[i_erm], "plug-in+norm": risk[i_norm], "least squares": risk[i_ls],
-           "tournament": risk[i_tr]}
-    for name, r in out.items():
-        chk.finite(f"B risk {name}", r)
+    out = {"plug-in": risk[i_erm], "anchor (P16)": risk[i_anchor], "anchor proj (P16')": risk[i_proj],
+           "least squares": risk[i_ls], "tournament": risk[i_tr]}
     return out, risk
 
 
@@ -186,17 +141,21 @@ def check_paired(n_seeds=10, trials=300):
         (("trap", 8), 0.03, "L*"),
     ]
     design_names = ["mixprod", "occmix", "envelope", "optimal"]
-    sel_names = ["plug-in", "plug-in+norm", "least squares", "tournament"]
+    sel_names = ["plug-in", "anchor (P16)", "anchor proj (P16')", "least squares", "tournament"]
     print(f"\nB. paired experiment: {n_seeds} class seeds x {trials} noise draws (shared across designs)")
     for kind, sigma, unit in configs:
         res = {dn: {sn: [] for sn in sel_names} for dn in design_names}
         gam = {dn: [] for dn in design_names}
-        envs, gaps, Bs = [], [], []
+        envs, gaps, gaps_used, Bs = [], [], [], []
         for seed in range(n_seeds):
             t, pols = make_class(kind, 1000 + seed)
-            pairs, C, const, S = pair_struct(pols)
-            dsg, env, ub, lb = designs_for(pols, C, S)
+            pairs, C, const, Cn, Sn, valid = pair_struct(pols)
+            dsg, env, ub, lb = designs_for(pols, Cn, Sn, valid)
             envs.append(env / pols[0].H); gaps.append((ub - lb) / ub)
+            g_used = gamma_T(Cn, Sn, valid, dsg["optimal"])
+            gaps_used.append((g_used - lb) / g_used)
+            chk.le(f"B {kind} seed {seed}: certified bound <= Gamma_T of the design actually used", lb, g_used,
+                   tol=1e-9 * g_used)
             Bs.append(max(pathwise_max(p, t) for p in pols))
             chk.le(f"B {kind} seed {seed}: dual <= primal", lb, ub, tol=1e-6 * ub)
             g = np.random.default_rng(50_000 + seed).normal(size=(trials, pols[0].nu.size))
@@ -204,7 +163,7 @@ def check_paired(n_seeds=10, trials=300):
                 w = dsg[dn]
                 chk.finite(f"B design {dn}", w)
                 chk.close(f"B design {dn} sums to 1", w.sum(), 1.0, rel=1e-9)
-                gam[dn].append(gamma_T(C, S, w))
+                gam[dn].append(gamma_T(Cn, Sn, valid, w))
                 out, risk = selectors(pols, t, sigma, g, w, pairs, C, const)
                 scale = sigma**2 if unit == "sigma^2" else risk.min()
                 for sn in sel_names:
@@ -212,20 +171,25 @@ def check_paired(n_seeds=10, trials=300):
         H = kind[1]
         print(f"\n   class {kind}, sigma = {sigma}; risk / {unit}, mean over seeds (se);"
               f" envelope mass / H = {np.mean(envs):.2f}, max pathwise KL = {np.mean(Bs):.2f},"
-              f" dual gap of the optimal design <= {100 * max(gaps):.2f}%")
-        print("      design     Gamma_T/H   " + "   ".join(f"{sn:>15s}" for sn in sel_names))
+              f" dual gap: pure minimax solution <= {100 * max(gaps):.2f}%,"
+              f" 90/10 mixture actually used <= {100 * max(gaps_used):.2f}%")
+        print("      design     Gamma_T/H   " + "   ".join(f"{sn:>19s}" for sn in sel_names))
         for dn in design_names:
             print(f"      {dn:9s}  {np.mean(gam[dn]) / H:8.2f}   " + "   ".join(
-                f"{np.mean(res[dn][sn]):8.2f} ({np.std(res[dn][sn], ddof=1) / np.sqrt(n_seeds):5.2f})"
+                f"{np.mean(res[dn][sn]):11.2f} ({np.std(res[dn][sn], ddof=1) / np.sqrt(n_seeds):5.2f})"
                 for sn in sel_names))
         print("      paired differences (mean [95% interval], negative = first is better):")
         for dn in design_names[1:]:
             m, lo, hi = paired(res[dn]["tournament"], res["mixprod"]["tournament"])
             print(f"         tournament, {dn:8s} - mixprod: {m:8.2f} [{lo:8.2f}, {hi:8.2f}]")
-        for a, b in (("tournament", "least squares"), ("tournament", "plug-in"), ("plug-in+norm", "plug-in"),
-                     ("plug-in+norm", "tournament")):
+        for a, b in (("tournament", "least squares"), ("tournament", "plug-in"), ("anchor (P16)", "plug-in"),
+                     ("anchor (P16)", "tournament")):
             m, lo, hi = paired(res["mixprod"][a], res["mixprod"][b])
             print(f"         mixprod, {a:13s} - {b:13s}: {m:8.2f} [{lo:8.2f}, {hi:8.2f}]")
+        m, lo, hi = paired(res["envelope"]["anchor proj (P16')"], res["envelope"]["anchor (P16)"])
+        print(f"         envelope design, projected - exact anchor estimator: {m:8.2f} [{lo:8.2f}, {hi:8.2f}]")
+        chk.close(f"B {kind}: P16 and P16' coincide under the product design",
+                  np.mean(res["mixprod"]["anchor proj (P16')"]), np.mean(res["mixprod"]["anchor (P16)"]), rel=1e-6)
 
 
 # ---------------------------------------------------------------- C
