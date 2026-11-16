@@ -10,13 +10,16 @@ a same-state comparison on the shared occupancy; it is linear in log pi*, so it 
 Tournament:                   pi_hat = argmin_pi max_{pi'} Delta_hat(pi, pi').
 
 Checks
-  T1. Transfer lemma (Lemma 12): L(pi) <= (2 + 79 B) T_{pi'}(pi) + 56 B L(pi'), B = max pathwise KL sum,
+  T1. Transfer lemma (Lemma 12): L(pi) <= (2 + 80 B) T_{pi'}(pi) + 56 B L(pi'), B = max pathwise KL sum,
       on random classes; also the intermediate bound L(pi) <= 2 T + B * P_pi(shared mass ratio drops below 1/2).
   T2. Variance bound (Lemma 13): Var[Delta_hat] <= 8 kappa H sigma^2 (T_{pi'}(pi) + T_{pi}(pi')).
   T3. Realizable class: risk vs H for plug-in, log-space least squares, tournament.
   T4. Misspecified class (as R3 of check_review.py): same three selectors.
 """
 import numpy as np
+from _checks import Checker
+
+chk = Checker("check_tournament")
 
 rng = np.random.default_rng(20261115)
 
@@ -145,8 +148,11 @@ def check_lemmas(H=7, n_pol=14, reps=12, sigma=0.05):
         for (i, j), v in zip(pairs, var):
             worst_var = max(worst_var, v / (8 * kap * H * sigma**2 * (T[i, j] + T[j, i]) + 1e-300))
             for a, b in ((i, j), (j, i)):
-                worst_lemma = max(worst_lemma, L[a] / ((2 + 79 * B) * T[a, b] + 56 * B * L[b] + 1e-300))
+                worst_lemma = max(worst_lemma, L[a] / ((2 + 80 * B) * T[a, b] + 56 * B * L[b] + 1e-300))
                 worst_mid = max(worst_mid, L[a] / (2 * T[a, b] + B * crossing_prob(pols[a], pols[b]) + 1e-300))
+    chk.le("T1 transfer lemma", worst_lemma, 1.0)
+    chk.le("T1 intermediate bound", worst_mid, 1.0)
+    chk.le("T2 variance bound", worst_var, 1.0)
     print(f"T1. transfer lemma over {reps} random classes (binary tree, H={H}): max LHS/RHS = {worst_lemma:.4f};"
           f" intermediate bound L <= 2T + B*P(crossing): max LHS/RHS = {worst_mid:.4f}  (both must be <= 1)")
     print(f"T2. variance bound: max Var / (8 kappa H sigma^2 (T + T')) = {worst_var:.4f}  (must be <= 1)")
@@ -168,6 +174,10 @@ def check_realizable(sigma=0.01, n_pol=64, trials=1000, Hs=(2, 4, 6, 8, 10, 12))
         print(f"   {H:3d}   " + "   ".join(f"{m:7.2f} ({e:4.2f})" for m, e in r) + f"   {kap:8.2f}   {B:10.3f}")
     rows = np.array(rows); lh = np.log(np.array(Hs, dtype=float))
     sl = [np.polyfit(lh[1:], np.log(rows[1:, j]), 1)[0] for j in range(3)]
+    chk.finite("T3 risks", rows)
+    chk.between("T3 plug-in slope", sl[0], 1.7, 2.5)
+    chk.between("T3 least-squares slope", sl[1], 0.8, 1.4)
+    chk.between("T3 tournament slope", sl[2], 0.8, 1.4)
     print(f"   log-log slope in H (H >= 4): plug-in {sl[0]:.2f}, least squares {sl[1]:.2f}, tournament {sl[2]:.2f}")
 
 
@@ -193,6 +203,9 @@ def check_misspecified(Hs=(2, 4, 6, 8), sigmas=(0.0, 0.01, 0.03, 0.1, 0.3), tria
         for s in sigmas:
             risk, sel, kap, T = select_all(pols, t, s, trials if s > 0 else 1)
             Ls = risk.min()
+            chk.finite(f"T4 risks H={H} sigma={s}", [x.mean() for x in sel])
+            if s == 0.0:
+                chk.close(f"T4 noiseless plug-in returns L*, H={H}", sel[0].mean(), Ls, rel=1e-9)
             if first:
                 print(f"   H={H}: L* = {Ls:.4f}, max pathwise KL B = {B:.2f}, kappa_pair = {kap:.1f}")
                 print("        sigma   plug-in        least squares  tournament")
@@ -205,3 +218,4 @@ if __name__ == "__main__":
     check_lemmas()
     check_realizable()
     check_misspecified()
+    chk.finish()

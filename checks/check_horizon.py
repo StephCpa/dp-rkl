@@ -17,6 +17,9 @@ Checks
 """
 import numpy as np
 from scipy.stats import norm
+from _checks import Checker
+
+chk = Checker("check_horizon")
 
 rng = np.random.default_rng(20261113)
 
@@ -59,6 +62,7 @@ def check_jeffreys(d=30, trials=200_000):
         Q = np.maximum(rng.dirichlet(np.full(d, rng.choice([0.05, 0.3, 1.0, 5.0])), size=1000), 1e-300)
         u = np.log(P) - np.log(Q)
         worst = max(worst, float((np.sum(P * u, axis=1) / np.sum(np.maximum(P, Q) * u**2, axis=1)).max()))
+    chk.le("A Jeffreys-type inequality", worst, 1.0)
     print(f"A. max of KL(p||q) / sum max(p,q) log(p/q)^2 over {trials} random pairs: {worst:.4f}  (must be <= 1)")
 
 
@@ -94,6 +98,10 @@ def check_two_policy(sigma=0.01, Hs=(2, 4, 6, 8, 10, 12, 14)):
     rows = np.array(rows)
     lh = np.log(np.array(Hs, dtype=float))
     sl = [np.polyfit(lh[2:], np.log(rows[2:, j]), 1)[0] for j in range(3)]
+    chk.finite("B risks", rows)
+    chk.between("B plug-in slope", sl[0], 1.6, 2.4)
+    chk.between("B plug-in best-design slope", sl[1], 1.6, 2.4)
+    chk.between("B least-squares slope", sl[2], 0.8, 1.2)
     print(f"   log-log slope in H (H >= 6): plug-in {sl[0]:.2f}, plug-in best design {sl[1]:.2f}, LS {sl[2]:.2f}"
           "   (theory 2, 2, 1)")
 
@@ -106,6 +114,8 @@ def check_two_policy(sigma=0.01, Hs=(2, 4, 6, 8, 10, 12, 14)):
     y = t[3] + rng.normal(size=(200_000, w.size)) * sigma / np.sqrt(w)
     erm_wrong = (y @ (c[2] - t[2]) > np.sum(c[2] * c[3]) - np.sum(t[2] * t[3])).mean()
     ls_wrong = (((y - c[3]) ** 2) @ w < ((y - t[3]) ** 2) @ w).mean()
+    chk.close("C plug-in error probability", erm_wrong, r["p_erm"], rel=0.0, abs_tol=0.01)
+    chk.close("C least-squares error probability", ls_wrong, r["p_ls"], rel=0.0, abs_tol=0.01)
     print(f"C. MC (H=6, rho=0.03): plug-in error {erm_wrong:.4f} vs formula {r['p_erm']:.4f};"
           f" LS error {ls_wrong:.4f} vs formula {r['p_ls']:.4f}")
 
@@ -132,6 +142,9 @@ def check_class(sigma=0.01, n_pol=64, trials=1500, Hs=(2, 4, 6, 8, 10, 12)):
         out.append((r_erm, r_ls))
         print(f"   {H:3d}   {r_erm:11.2f}   {r_ls:12.2f}   {r_erm / r_ls:5.2f}")
     out = np.array(out); lh = np.log(np.array(Hs, dtype=float))
+    chk.finite("D risks", out)
+    chk.between("D plug-in slope", np.polyfit(lh[1:], np.log(out[1:, 0]), 1)[0], 1.7, 2.5)
+    chk.between("D least-squares slope", np.polyfit(lh[1:], np.log(out[1:, 1]), 1)[0], 0.8, 1.4)
     print(f"   log-log slope in H (H >= 4): plug-in {np.polyfit(lh[1:], np.log(out[1:, 0]), 1)[0]:.2f},"
           f" LS {np.polyfit(lh[1:], np.log(out[1:, 1]), 1)[0]:.2f}")
 
@@ -140,3 +153,4 @@ if __name__ == "__main__":
     check_jeffreys()
     check_two_policy()
     check_class()
+    chk.finish()

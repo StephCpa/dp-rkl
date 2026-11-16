@@ -12,6 +12,9 @@ All risks are exact given the selected policy; selection is simulated (R1, R3) w
 """
 import numpy as np
 from scipy.optimize import linprog
+from _checks import Checker
+
+chk = Checker("check_review")
 
 rng = np.random.default_rng(20261114)
 
@@ -49,6 +52,8 @@ def check_rare_action(sigma=0.02):
     for R, Ts in [(10**6, (10**5, 10**6, 10**7)), (10**4, (10**3, 10**4, 10**5)), (10**2, (10, 10**2, 10**3))]:
         for T in Ts:
             rs, rf, p0, rA = rare_action(R, T, sigma)
+            chk.close(f"R1 sampled risk = P(unseen) * risk(A), R={R}, T={T}", rs, p0 * rA, rel=0.0, abs_tol=0.01)
+            chk.le(f"R1 weighted-full risk ~ 0, R={R}, T={T}", rf, 1e-3)
             print(f"   {R:8.0e}  {T:9.0e}   {rs:10.4f}      {p0:10.4f}            {rf:10.6f}")
     print("   -> sampled feedback converges only once T is a few multiples of R; no threshold in (G, e^b, Delta/mu) alone.")
 
@@ -67,6 +72,8 @@ def check_normalization(d=8, Delta=0.05, trials=200):
         r_pos.append(width(pi, p) / Delta)                       # cube calibration would say ||pi||_1 = 1
         r_diff.append(width(pi - pi2, p) / (Delta * np.abs(pi - pi2).sum()))
         r_near.append(width(near, p) / Delta)
+    chk.le("R2 zero-sum width at least half the cube value", 0.5, np.min(r_diff))
+    chk.le("R2 width never exceeds the cube value", max(np.max(r_pos), np.max(r_diff), np.max(r_near)), 1.0, tol=1e-7)
     print("R2. feasible first-order width of <c, log p*> for normalized teachers, relative to the cube value Delta*||c||_1")
     print(f"   c = a random policy           : mean {np.mean(r_pos):.3f}  (cube calibration assumes 1)")
     print(f"   c = policy 5% away from p*    : mean {np.mean(r_near):.3f}")
@@ -148,6 +155,9 @@ def check_misspecified(Hs=(2, 4, 6, 8), sigmas=(0.0, 0.01, 0.03, 0.1, 0.3), tria
             ls = np.sum(w * LP**2, axis=1)[None, :] - 2.0 * y @ (LP * w).T
             ie, il = np.argmin(erm, axis=1), np.argmin(ls, axis=1)
             re, rl = risk[ie], risk[il]
+            chk.finite(f"R3 risks H={H} sigma={s}", [re.mean(), rl.mean()])
+            if s == 0.0:
+                chk.close(f"R3 noiseless plug-in returns L*, H={H}", re.mean(), Lstar, rel=1e-9)
             print(f"      {s:7.3f}   {re.mean():.4f} ({re.std() / np.sqrt(trials):.4f})   "
                   f"{rl.mean():.4f} ({rl.std() / np.sqrt(trials):.4f})   "
                   f"{re.mean() / Lstar:9.2f}   {rl.mean() / Lstar:6.2f}   {(il < n_each).mean():10.2f}")
@@ -170,6 +180,8 @@ def check_kappa(Hs=(2, 4, 6, 8, 10, 12), n_pol=64):
         occs = [occupancy(a) for a in acts]
         w = design(acts, occs, H)
         kap = kappa(acts, occs, acts[0], w, H, range(n_pol))
+        chk.finite(f"R4 kappa H={H}", kap)
+        chk.le(f"R4 kappa >= 1 for the teacher, H={H}", 1.0, kap[0], tol=1e-9)
         print(f"   {H:3d}   {kap[0]:12.2f}   {np.median(kap):15.2f}   {kap.max():13.2f}   {kap[1:9].max():16.2f}")
 
 
@@ -178,3 +190,4 @@ if __name__ == "__main__":
     check_normalization()
     check_misspecified()
     check_kappa()
+    chk.finish()

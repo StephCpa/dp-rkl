@@ -17,20 +17,22 @@ Status: a working research note, not a finished paper. Several proofs have not b
 | `checks/check_review.py` | Checks added after external review: rare-action counterexample, normalization, misspecification (§10) |
 | `checks/check_tournament.py` | Shared-mass tournament: transfer lemma, variance bound, simulations (§11) |
 | `checks/check_hybrid.py` | Step-by-step proof check, trap instance, hybrid selector, design quantity (§12) |
+| `checks/check_round2.py` | Class-complexity example with dual certificate, anchor-normalized plug-in, paired design × selector experiment (§13) |
+| `checks/_checks.py`, `checks/run_all.py` | Failure assertions shared by all scripts; a single entry point |
 | `reviews/2026-11-12-integration-points.md` | An earlier list of candidate DP integration points that the note responds to |
 | `reviews/2026-11-13-external-review.md` | External review of the first two passes; §10 of the note answers it |
 
 ## Running the checks
 
 ```
-pip install -r requirements.txt
+pip install -r requirements.txt      # pinned: numpy 2.5.3, scipy 1.18.1 (run on Python 3.13)
 cd checks
-python check_feedback_design.py
-python check_horizon.py
-python check_review.py
-python check_tournament.py
-python check_hybrid.py     # imports check_tournament.py from the same directory
+python run_all.py                    # all six scripts; add --strict to turn RuntimeWarnings into errors
+python check_round2.py               # or any single script
 ```
+
+Every script exits non-zero if an inequality is violated, a comparison is out of tolerance, or a value is
+not finite. The full run takes about three minutes.
 
 Each script prints its results; the numbers quoted in `theory.md` come from these runs. Monte Carlo values
 can differ slightly across NumPy versions.

@@ -1,26 +1,28 @@
 # Private feedback design for reverse-KL distillation: theory note (12 Nov 2026)
 
-Builds on Liu, Wei, Zimmert, "Reverse-KL Policy Distillation: Statistical Guarantees and Limits" (arXiv 2610.30844), read through an automated extraction; verify theorem numbers against the PDF before citing. Setting is the private-teacher model of DP-OPD-004 (claude/dp-opd-ier.md). It settles, in a restricted model, conjecture ④ of claude/dp-opsd-feasibility.md. Checks: checks/check_feedback_design.py (§2–4, §8), check_horizon.py (§9), check_review.py (§10), check_tournament.py (§11) and check_hybrid.py (§12).
+Builds on Liu, Wei, Zimmert, "Reverse-KL Policy Distillation: Statistical Guarantees and Limits" (arXiv 2610.30844), read through an automated extraction; verify theorem numbers against the PDF before citing. Setting is the private-teacher model of DP-OPD-004 (claude/dp-opd-ier.md). It settles, in a restricted model, conjecture ④ of claude/dp-opsd-feasibility.md. Checks: checks/check_feedback_design.py (§2–4, §8), check_horizon.py (§9), check_review.py (§10), check_tournament.py (§11), check_hybrid.py (§12) and check_round2.py (§13); run_all.py runs them all.
 
-**Revised 13 Nov 2026 after an external review.** Corollary 6 was wrong and is replaced by Proposition 6′; the lower bounds are restated for normalized teachers; the H² claim is restricted to the plug-in estimator; a misspecification experiment is added. §10 lists every change.
+**Revised 13 Nov 2026 after an external review** (§10: Corollary 6 replaced by Proposition 6′, lower bounds restated for normalized teachers, H² claim restricted to the plug-in) **and again 16 Nov 2026 after a second review** (§13: a constant corrected, lower bounds fully specified, the tournament's design quantity shown to depend on class complexity, a paired design × selector experiment, failure assertions in every script).
 
 ## 0. Results at a glance
 
 | # | Statement | Status |
 |---|---|---|
 | L1 | A sampled release with law r and a deterministic release with precision shares βr have identical privacy-noise variance; the sampled one adds sampling variance on top | Proved; a variance identity only, it does not give equal risk (see P6′) |
-| L2 | For one linear functional c, the best diagonal Gaussian design calibrated to the cube is precision ∝ \|c_a\|, variance Δ²‖c‖₁²/β. A matching worst-case lower bound over all GDP mechanisms holds for zero-sum c (differences of policies) only | Proved; lower bound restated 13 Nov for normalized teachers |
+| L2 | For one linear functional c, the best diagonal Gaussian design calibrated to the cube is precision ∝ \|c_a\|, variance Δ²‖c‖₁²/β. A matching worst-case lower bound holds for zero-sum c (differences of policies) only | Proved; the lower bound is stated with its mechanism class, instance and range β ≤ 1 in §13.2 |
 | P3 | For a policy class, the privacy inflation is Γ(Π) with 1 ≤ Γ ≤ min{d, \|Π\|, e^b}, the same three-way minimum as the paper's action-feedback factor | Proved; tight for deterministic classes |
 | P4 | Calibrating Gaussian noise to a cube makes full and sampled release tie in the privacy term; calibrating to an ℓ2 ball lets full release win by up to ‖c‖₁²/‖c‖₂² | Proved as a comparison of calibrated Gaussian mechanisms; not a minimax claim |
 | T5 | H=1: L(π̂) ≤ 9L* + 11·G·ι/T + 32·e^b·(Δ/μ)²·ι, with ι = log(2\|Π\|/δ); the privacy term does not depend on T | Proved; simulation agrees on shape, constants loose (~150×) |
 | P6′ | Sampled feedback has a privacy term of the same order as weighted full release, but its T-term scales with a log-ratio second moment V̄ ≤ 8e^b·Λ_c², not with G. No threshold depending only on (G, e^b, Δ/μ) exists | Proved, constants unoptimized. Replaces the first-pass Corollary 6, which was wrong |
 | P7 | Gradient noise: optimal design gives (E_p‖e_a−p‖)², sampled token gives E_p‖e_a−p‖² = 1−‖p‖²; ratio 1+CV² | Proved; Monte Carlo agrees |
-| P8 | Lower bounds for proper learners: realizable floor Ω(min{1,(Δ/μ)²}); with C_app = 1 the floor is Ω(min{1, Δ/μ}) | Proved (two-point, normalized teachers, richness assumption); improper learners not written out |
+| P8 | Lower bounds, H = 1, proper learners: realizable risk ≥ min{0.0073·(Δ/μ)², 0.058·Δ/μ}; with C_app = 1 the excess risk is ≥ 0.06·Δ/μ | Proved for μ ≤ 1 and the mechanism class of §13.2 (two-point, normalized teachers); improper learners not written out |
 | T9 | H>1, plug-in reverse-KL ERM: L(π̂) ≤ 3L* + 16·e^b·H²·(Δ/μ)²·ι; no clipping needed | Proved (public dynamics). H² observed for this estimator on a tree MDP; it is not a lower bound for other mechanisms |
 | T10 | H>1, log-space least squares (the MLE for the release channel): realizable L(π̂) ≤ 8·κ·H·(Δ/μ)²·ι | Proved; slope 1.00 in H on the tree MDP; κ can grow with H for far candidates (§10) |
-| P11 | H>1 lower bounds: realizable Ω(H(Δ/μ)²); C_app = 1 gives Ω(HΔ/μ) | Proved (two-point, normalized, proper learners) |
-| L12–T14 | H>1, shared-mass tournament: L(π̂) ≤ (14 + 609·B̄)·L* + (64 + 2528·B̄)·Γ_T(w)·(Δ/μ)²·ι, with B̄ the largest pathwise KL sum in the class and Γ_T(w) a public design quantity, about 1.0–1.8·H in the classes tested (§12). Reverse-KL approximation term with a floor linear in H when B̄ is bounded | Proved (own proof, not externally checked; constants crude). Every step of the transfer lemma verified exactly on 800 ordered pairs (§12). The B̄ factor is real: a trap instance makes the tournament select 3.7·L* with no noise |
+| P11 | Lower bounds, H steps, proper learners: realizable risk ≥ H·min{0.0073·(Δ/μ)², 0.058·Δ/μ}; with C_app = 1 the excess risk is ≥ 0.06·H·Δ/μ | Proved for μ ≤ 1 and the mechanism class of §13.2 (repeated binary construction) |
+| L12–T14 | H>1, shared-mass tournament: L(π̂) ≤ (14 + 616·B̄)·L* + (64 + 2560·B̄)·Γ_T(w)·(Δ/μ)²·ι, with B̄ the largest pathwise KL sum in the class and Γ_T(w) a public design quantity | Proved (own proof; constants crude; the 79 of the first version was a rounding error, now 80). Every proof step verified exactly on 800 ordered pairs. Two limits: the B̄ factor is real (trap instance, §12), and Γ_T is a class-complexity quantity that bounded B̄ does not control (§13.1) |
 | P15 | Hybrid (plug-in elimination with publicly known noise levels, then tournament among survivors) satisfies the smaller of the T9-type and T14 bounds | Proved. In simulation it coincides with the tournament unless the noise is near zero, so the practical gain is small |
+| P16 | Anchor-normalized plug-in: L(π̂) ≤ 3·L* + 4·A_q + 32·κ·H·(Δ/μ)²·ι, where A_q is the anchor's local KL to the teacher along the candidates' occupancies. No B̄, floor linear in H, at the price of the additive anchor term | Proved (own proof, new on 16 Nov, not externally checked); variance bound checked exactly; in the paired experiment it removes the plug-in's H² behaviour |
+| P17 | min_w Γ_T(w) ≤ E(Π) = Σ_z max_π ν^π(z), the occupancy envelope mass; an H = 1 class with pathwise KL < 1 has min_w Γ_T ≈ d/log d | Proved; example certified by a dual bound (gap ≤ 0.32%) |
 | §10 | Misspecified teacher: plug-in stays at L* for small noise, least squares sits at about 4·L* at every noise level; least squares wins only once privacy noise dominates | Simulation on one constructed family |
 
 ## 1. Model
@@ -45,7 +47,7 @@ This is an identity about variances. The sampled estimator's privacy noise is Ga
 
 **Lemma 2 (one functional).** Among diagonal Gaussian designs calibrated to the cube, min_w V_det = Δ²‖c‖₁²/β, attained at w ∝ |c_a| (Cauchy–Schwarz). Releasing ⟨c, ℓ*⟩ with cube-calibrated noise gives the same variance.
 
-*Lower bound (restated 13 Nov).* Teachers are normalized, so a feasible perturbation δ of the log-probabilities satisfies Σ_a p*_a·e^{δ_a} = 1. It cannot move every coordinate the same way, and the cube is only an outer bound on the perturbation set. Richness assumption R_k: for normalized teachers p_± ∝ p₀·exp(±η·sign(c)) with 4η ≤ kΔ (so ‖log p₊ − log p₋‖_∞ ≤ kΔ) there are datasets at distance ≤ k producing them. If c sums to zero, ⟨c, log p₊ − log p₋⟩ = 2η‖c‖₁. With k = ⌈1/√β⌉ the two datasets are ≤ 2-GDP apart, so any √β-GDP estimator of ⟨c, ℓ*⟩ has worst-case squared error ≥ c₀·Δ²‖c‖₁²/β over {p₊, p₋}. ∎
+*Lower bound (restated 13 Nov, fully specified 16 Nov in §13.2).* Teachers are normalized, so a feasible perturbation δ of the log-probabilities satisfies Σ_a p*_a·e^{δ_a} = 1. It cannot move every coordinate the same way, and the cube is only an outer bound on the perturbation set. For zero-sum c and a release that is √β-GDP per Δ of sup-log distance with β ≤ 1, any estimator of ⟨c, ℓ*⟩ has worst-case squared error ≥ 1.2·10⁻³·Δ²‖c‖₁²/β over the two teachers p_± ∝ p₀·exp(±η·sign(c)), η = (Δ/8)·⌊1/√β⌋. The mechanism class and the proof are in §13.2.
 
 So for differences of policies, which is what selection needs, the cube-calibrated design is worst-case optimal up to constants. For c with nonzero sum (one policy's cross-entropy, c = π) no such bound holds. To first order feasible perturbations satisfy ⟨p*, δ⟩ = 0 and the width is Δ·min_λ‖c − λp*‖₁. Numerically (check R2) this is 0.76·Δ for a random policy and 0.04·Δ for a policy 5% away from the teacher, against the cube value Δ. Cube-calibrated noise is then conservative, and a normalization-aware mechanism could do better (open problem 2).
 
@@ -97,11 +99,11 @@ What this says:
 
 **Counterexample to the first-pass Corollary 6 (from the review, reproduced in check R1).** Two actions, teacher p* = (e^{−R}, 1 − e^{−R}), candidates A = q = (1/R, 1 − 1/R) and B = (0, 1), sampling law q. Then G ≈ 1 and e^b ≈ 1, so T* ≈ 2500 at Δ/μ = 0.02 for every R, but V̄ ≈ R. With R = 10⁶ and T = 10⁵ the sampled estimator has risk 0.905 (it picks A whenever the rare action is never drawn, probability 0.905) while weighted full release has risk 0. Across R ∈ {10², 10⁴, 10⁶} the sampled risk is about 0.90, 0.37 and 0 at T = R/10, R and 10R.
 
-**Proposition 8 (lower bounds; proper learners, μ ≤ 1, richness R_k for the named pairs).**
-- Realizable: d even, s ∈ {±1}^d balanced, Π = {p₊, p₋} with p_± ∝ exp(±ρ·s). Then ‖log p₊ − log p₋‖_∞ = 2ρ and KL(p₊‖p₋) = 2ρ·tanh ρ. Take 2ρ = kΔ with k = ⌈1/μ⌉: the two datasets are ≤ 2-GDP apart, so for any μ-GDP learner and any T the worst-case risk is ≥ c·min{1, (Δ/μ)²}.
-- C_app = 1: candidates π, π′ and teachers p_± ∝ p₀·exp(±η·sign(π′−π)) with 4η = kΔ. Then KL(π‖p_±) − KL(π′‖p_±) = c₀ ± η‖π−π′‖₁, and c₀ = 0 for a mirror-symmetric pair with p₀ ∝ √(ππ′). Excess risk ≥ c·min{1, (Δ/μ)·‖π−π′‖₁}.
+**Proposition 8 (lower bounds, H = 1; proper learners; μ ≤ 1; mechanism class M(μ, Δ) of §13.2).** The bounds hold for any number of queries and any adaptivity.
+- Realizable: d even, s ∈ {±1}^d balanced, Π = {p₊, p₋} with p_± ∝ exp(±ρ·s) and ρ = (Δ/4)·⌊1/μ⌋. The teacher is one of the two. Worst-case risk ≥ min{0.0073·(Δ/μ)², 0.058·Δ/μ}.
+- C_app = 1: d = 2, candidates π = (0.9, 0.1) and π′ = (0.1, 0.9), teachers p_± ∝ (e^{∓η}, e^{±η}) with η = (Δ/4)·⌊1/μ⌋. Worst-case excess risk E[L(π̂)] − L* ≥ 0.06·Δ/μ.
 
-Both families consist of normalized distributions. The bounds are over these two-point families and for learners that output an element of Π.
+Proofs in §13.2. Both families consist of normalized distributions, and the learner outputs an element of Π.
 
 So the floor is quadratic in Δ/μ when a constant C_app > 1 is allowed (Theorem 5 matches up to e^b·ι) and linear when C_app = 1.
 
@@ -196,7 +198,11 @@ with no dependence on H, d or coverage. If moreover d^π̂_h(s)·max(π̂, π*)(
 
 Proof. (i) Finite-class least squares in a Gaussian sequence model with noise σ²/w(z), σ = Δ/μ: ⟨ξ, θ − θ°⟩_w ~ N(0, σ²‖θ − θ°‖_w²), union bound, then x² ≤ a² + 2s(x + a) with s = σ√(2ι) gives x ≤ a + 2s. (ii) Chain rule L(π) = Σ_h E_{d^π_h}[KL(π_h‖π*_h)] and KL(p‖q) ≤ KL(p‖q) + KL(q‖p) = Σ_a |p_a − q_a|·|log(p_a/q_a)| ≤ Σ_a max(p_a, q_a)·log²(p_a/q_a). ∎
 
-**Proposition 11 (lower bounds; proper learners, normalized teachers, richness as in Proposition 8).** Realizable: use the pair p_± of Proposition 8 at every state, with 2ρ = kΔ; then KL = H·2ρ·tanh ρ between two teachers that are ≤ 2-GDP apart, so risk ≥ c·min{1, H(Δ/μ)²}. C_app = 1: two candidates with disjoint occupancies and the per-state construction of Proposition 8 give excess risk ≥ c·min{·, HΔ/μ}.
+**Proposition 11 (lower bounds, H steps; proper learners; μ ≤ 1; mechanism class M(μ, Δ) of §13.2).** Binary actions, every state alike.
+- Realizable: the two candidates play p₊ or p₋ of Proposition 8 (d = 2) at every state, and the teacher is one of them. Worst-case risk ≥ H·min{0.0073·(Δ/μ)², 0.058·Δ/μ}.
+- C_app = 1: the two candidates play π or π′ of Proposition 8 at every state and the teacher plays p₊ or p₋ at every state. Worst-case excess risk ≥ 0.06·H·Δ/μ.
+
+Proofs in §13.2.
 
 **Summary.**
 
@@ -204,7 +210,7 @@ Proof. (i) Finite-class least squares in a Gaussian sequence model with noise σ
 |---|---|---|---|
 | Plug-in reverse-KL ERM (T9) | 3·L* | 16·e^b·H²·(Δ/μ)²·ι | design covers occupancies of candidates and teacher |
 | Log-space least squares (T10) | 2·κ·H·min_π D_w(π, π*)² | 16·κ·H·(Δ/μ)²·ι | design covers the selected student's states, and teacher/student action laws per step |
-| Lower bound (P11) | — | H·(Δ/μ)² realizable; H·Δ/μ if C_app = 1 | — |
+| Lower bound (P11) | — | 0.0073·H·(Δ/μ)² realizable (for Δ/μ ≤ 8); 0.06·H·Δ/μ if C_app = 1 | — |
 
 In the realizable case the floor is Θ̃(H(Δ/μ)²) and least squares attains it up to κ·ι. Its weakness is the approximation term: log-space L2 penalizes a mode-seeking student that ignores teacher tails, where L* would be small. Reverse KL is used in practice for exactly that case, so Theorem 10 is weak under misspecification.
 
@@ -283,13 +289,13 @@ Question from §7 and the review: in the same Gaussian release channel, can a se
 - Pairwise statistic: Δ(π, π′) = T_{π′}(π) − T_π(π′) = Σ_s min(d^π, d^{π′})(s)·[k(s; π) − k(s; π′)]. It compares the two candidates at the same states, on the occupancy they share, and is linear in ℓ*, so Δ̂ is obtained by replacing ℓ* with y.
 - Tournament: π̂ = argmin_π max_{π′} Δ̂(π, π′).
 
-**Lemma 12 (transfer).** For any π, π′ ∈ Π: L(π) ≤ (2 + 79·B̄)·T_{π′}(π) + 56·B̄·L(π′).
+**Lemma 12 (transfer).** For any π, π′ ∈ Π: L(π) ≤ (2 + 80·B̄)·T_{π′}(π) + 56·B̄·L(π′).
 
 Proof. Let τ be the first h with R_h < 1/2 (τ = ∞ if none). For h < τ the weight min{1, R_h} ≥ 1/2, so E_π[Σ_{h<τ} k_h] ≤ 2T. On {τ ≤ H} the remaining sum is ≤ B̄. Hence L(π) ≤ 2T + B̄·P_π(τ ≤ H).
 
 Write R_h = V_h·W_h with W_h = d*(s_h)/d^π(s_h) and V_h = d^{π′}(s_h)/d*(s_h). At time τ, either W_τ < 1/√2 or V_τ < 1/√2. Let φ(w) = (1 − √w)² and c₀ = φ(1/√2) = 0.0253.
-- Case W_τ < 1/√2. With σ = τ∧H, Markov gives P ≤ E_π[φ(W_σ)]/c₀. Pointwise φ(w) ≤ −log w + (w − 1), and E_π[W_σ] ≤ 1 (W is a non-negative supermartingale under P^π), so E_π[φ(W_σ)] ≤ E_π[−log W_σ] = E_π[Σ_{j<σ} k_j(s_j; π)] ≤ E_π[Σ_{j<τ} k_j] ≤ 2T. So this case has probability ≤ 79·T.
-- Case V_τ < 1/√2 ≤ W_τ. First-crossing states form an antichain, and on them d^π(s) ≤ √2·d*(s). So the probability is ≤ √2·P_*(∃h: V_h < 1/√2). Under P*, V is a martingale and φ(V_h) a non-negative submartingale; Doob's inequality gives P_*(·) ≤ E_*[φ(V_H)]/c₀ ≤ KL(P^{π′}‖P*)/c₀ = L(π′)/c₀. So this case has probability ≤ 56·L(π′). ∎
+- Case W_τ < 1/√2. With σ = τ∧H, Markov gives P ≤ E_π[φ(W_σ)]/c₀. Pointwise φ(w) ≤ −log w + (w − 1), and E_π[W_σ] ≤ 1 (W is a non-negative supermartingale under P^π), so E_π[φ(W_σ)] ≤ E_π[−log W_σ] = E_π[Σ_{j<σ} k_j(s_j; π)] ≤ E_π[Σ_{j<τ} k_j] ≤ 2T. So this case has probability ≤ (2/c₀)·T ≤ 80·T (2/c₀ = 79.008; the first version wrongly rounded this down to 79).
+- Case V_τ < 1/√2 ≤ W_τ. First-crossing states form an antichain, and on them d^π(s) ≤ √2·d*(s). So the probability is ≤ √2·P_*(∃h: V_h < 1/√2). Under P*, V is a martingale and φ(V_h) a non-negative submartingale; Doob's inequality gives P_*(·) ≤ E_*[φ(V_H)]/c₀ ≤ KL(P^{π′}‖P*)/c₀ = L(π′)/c₀. So this case has probability ≤ (√2/c₀)·L(π′) ≤ 56·L(π′) (√2/c₀ = 55.87). ∎
 
 The point of the stopping-time argument is that π's cost for leaving the shared region is paid at shared states, so it is charged to T, not to L(π).
 
@@ -301,7 +307,7 @@ Here κ involves the candidates and the design only. It is public and can be com
 
 **Theorem 14 (tournament).** Under the coverage condition of Lemma 13, with probability ≥ 1 − δ and ι = log(|Π|²/δ):
 
-  L(π̂) ≤ (14 + 609·B̄)·L* + (64 + 2528·B̄)·κ·H·(Δ/μ)²·ι.
+  L(π̂) ≤ (14 + 616·B̄)·L* + (64 + 2560·B̄)·κ·H·(Δ/μ)²·ι.
 
 Proof. Let a = 16κH(Δ/μ)²ι; on the good event |Δ̂ − Δ| ≤ √(a·(T_{π′}(π) + T_π(π′))) for all pairs. Let π^b attain L*. For any π′, with u = T_{π′}(π^b) ≤ L* and t = T_{π^b}(π′): Δ̂(π^b, π′) ≤ u − t + √(au) + √(at) ≤ 2L* + a/2. So Δ̂(π̂, π^b) ≤ max_{π′} Δ̂(π̂, π′) ≤ 2L* + a/2. With x = T_{π^b}(π̂) and T_{π̂}(π^b) ≤ L*: x ≤ 3L* + a/2 + √(a(x + L*)), hence x ≤ 7L* + 2a. Apply Lemma 12 with π′ = π^b. ∎
 
@@ -353,7 +359,7 @@ Proof. Let a = 16κH(Δ/μ)²ι; on the good event |Δ̂ − Δ| ≤ √(a·(T_{
 | P(case 2) ≤ √2·P_*(V falls below 1/√2) | 0.995 |
 | c₀·P_*(V falls below 1/√2) ≤ E_* φ(V_H) | 0.639 |
 | E_* φ(V_H) ≤ L(π′) | 0.945 |
-| Final: L ≤ (2 + 79B̄)T + 56B̄·L(π′) | 0.343 |
+| Final: L ≤ (2 + 80B̄)T + 56B̄·L(π′) | 0.343 |
 
 All hold, and several are close to tight, so the families do exercise the steps. The first run of this check reported violations; the cause was a bug in the checker (one family built unnormalized policies), now fixed and guarded by an assertion. This is numerical evidence, not a substitute for an independent read of the proof.
 
@@ -403,4 +409,134 @@ Then Var[Δ̂_p] ≤ 8·Γ_T(w)·(Δ/μ)²·(T_{π′}(π) + T_π(π′)), and T
 
 The growth of κ with H reported in §10–11 was an artefact of bounding by a worst-case ratio. The quantity that enters the variance stays between 1.0·H and 1.8·H under the optimal design in both classes, so in these classes the floor of Theorem 14 is linear in H up to B̄. I have not rerun the selection experiments with the optimal design, and I have no bound on how min_w Γ_T grows with |Π| in general.
 
-**12.5 Where this leaves the direction.** Supported: in this release channel, with bounded pathwise KL, reverse-KL approximation and a floor linear in H are compatible (Theorem 14 with Γ_T), and the floor matches the realizable lower bound in H. Not supported: any claim without the B̄ condition. The open question in §7 item 1(a) is now the sharpest one: either an adaptive selector that avoids the trap at moderate noise, or a lower bound showing that constant-factor reverse-KL approximation with a floor linear in H is impossible without a bound like B̄.
+**12.5 Where this leaves the direction (qualified in §13.1).** Supported: in this release channel, with bounded pathwise KL and a class whose design quantity Γ_T is O(H), reverse-KL approximation and a floor linear in H are compatible (Theorem 14 with Γ_T), and the floor matches the realizable lower bound in H. Not supported: any claim without the B̄ condition. The open question in §7 item 1(a) is now the sharpest one: either an adaptive selector that avoids the trap at moderate noise, or a lower bound showing that constant-factor reverse-KL approximation with a floor linear in H is impossible without a bound like B̄.
+
+## 13. Second external review, 16 Nov 2026: verdicts, repairs and new results
+
+I had the review's summary but not its full report, so every point below was re-derived or re-run here; where my construction may differ from the reviewer's I say so.
+
+| Review point | Verdict after checking | Change |
+|---|---|---|
+| 1. "Linear in H" needs a statement about class complexity; example with min_w Γ_T = d/log d at H = 1 and pathwise KL < 1 | Correct. I rebuilt such a class and certified min_w Γ_T within 0.32% of d/log d | §13.1: Proposition 17 (envelope bound) and the example; §12.5 qualified |
+| 2. Lower bounds not fully proved: no range on β in L2; a min{·, …} placeholder in P11 | Correct | §13.2: mechanism class, instances, parameter ranges and constants written out; P8 and P11 restated |
+| 3. 2/c₀ = 79.0078 cannot be rounded to 79 | Correct | 80 in Lemma 12; Theorem 14 constants are now 616 and 2560 |
+| 4. A lower design quantity is not a lower selection risk | Correct, and stronger than stated: the Γ_T-optimal design made the tournament worse in 3 of 5 classes | §13.3: paired experiment |
+| 5. The DP interface is not closed; first-order width is not a sensitivity | Correct | §13.5 |
+| 6. Scripts print instead of asserting; NaN on duplicate pairs; BLAS warnings | Correct on the first two; I could not reproduce the warnings | §13.6: 1,829 assertions, guards, pinned versions |
+
+### 13.1 Γ_T is a class-complexity quantity
+
+**Proposition 17 (envelope bound).** Let E(Π) = Σ_z max_{π∈Π} ν^π(z), the occupancy envelope mass (H ≤ E ≤ H·min{d, |Π|}). Then min_w Γ_T(w) ≤ Γ_T(w_env) ≤ E(Π) for w_env ∝ max_π ν^π.
+
+Proof. For any pair, c_p(z)²/w_env(z) = E·m(s)²(π−π′)²/env(z) ≤ E·m(s)·(π−π′)²/max(π, π′), because env(z) ≥ m(s)·max(π, π′)(a|s). Summing over z gives E·S̃_p. ∎
+
+**Example (H = 1, pathwise KL < 1, min_w Γ_T ≈ d/log d).** Teacher uniform on d actions; for each action j two candidates with mass q = 1/log d and 1.01·q on j and the rest uniform. Then KL to the teacher is below 0.54, each within-j pair forces w_j ≳ q/Γ, and summing over j gives Γ ≳ q·d.
+
+| d | max KL to teacher | min_w Γ_T: upper bound | dual lower bound | d/log d | envelope mass |
+|---|---|---|---|---|---|
+| 16 | 0.40 | 5.83 | 5.81 | 5.77 | 5.83 |
+| 64 | 0.47 | 15.54 | 15.49 | 15.39 | 15.54 |
+| 256 | 0.54 | 46.28 | 46.24 | 46.17 | 46.28 |
+
+The lower bound is a dual certificate: for any weights λ on pairs, (Σ_z √(Σ_p λ_p c_p(z)²/S̃_p))² ≤ min_w Γ_T(w).
+
+Consequences. Theorem 14's floor is (64 + 2560·B̄)·Γ_T·(Δ/μ)²·ι, and Γ_T sits between the single-pair value and the envelope mass. "Linear in H" therefore needs both B̄ = O(1) and E(Π) = O(H), meaning the candidates' occupancies overlap enough that their envelope has O(1) mass per step. This is the same min{d, |Π|, coverage} structure as Proposition 3. As the review says, the example bounds the design quantity; it is not a lower bound on selection risk.
+
+### 13.2 Lower bounds, fully specified
+
+**Mechanism class M(μ, Δ).** The mechanism (including any interaction with the learner) takes the teacher's table of normalized log-probabilities as input, and its output is μ-GDP for every two normalized tables at sup-distance ≤ Δ. The Gaussian release of §1 with total budget μ is in this class, as is any release that is private for every teacher pipeline with sensitivity S∞. A mechanism tailored to one pipeline's structure is not covered.
+
+**Chain lemma.** If two normalized tables are at sup-distance D, the outputs are ⌈2D/Δ⌉·μ-GDP. Proof: interpolate geometrically, p_t ∝ p^{1−t}·p′^t state by state. Then log p_t − log p_s = (t−s)(log p′ − log p) − (log Z_t − log Z_s) and |d/dt log Z_t| ≤ D, so the sup-distance between p_t and p_s is ≤ 2|t−s|·D. Take ⌈2D/Δ⌉ equal steps and apply group privacy. ∎
+
+**Two-point lemma.** If the outputs under two teachers are ν-GDP with ν ≤ 1, any test errs with total probability ≥ 2Φ(−1/2) = 0.617, so some teacher has error probability ≥ 0.3085.
+
+**L2 lower bound.** c zero-sum, the release √β-GDP per Δ with β ≤ 1, p_± ∝ p₀·exp(±η·sign(c)), η = (Δ/8)·⌊1/√β⌋. Normalizers lie in [e^{−η}, e^{η}], so D ≤ 4η and ⌈2D/Δ⌉ ≤ ⌊1/√β⌋, hence ν ≤ 1. The functional differs by 2η‖c‖₁ (the normalizers cancel because c is zero-sum), and η ≥ Δ/(16√β). So max over the two teachers of E(θ̂ − θ)² ≥ 0.3085·η²‖c‖₁² ≥ 1.2·10⁻³·Δ²‖c‖₁²/β. For β > 1 this argument gives nothing useful.
+
+**Proposition 8, realizable.** p_± ∝ exp(±ρ·s) have equal normalizers, so D = 2ρ; with ρ = (Δ/4)·⌊1/μ⌋ the chain has ⌊1/μ⌋ steps and ν ≤ 1. A wrong choice costs KL(p₊‖p₋) = 2ρ·tanh ρ ≥ 1.52·min{ρ², ρ}, and ρ ≥ Δ/(8μ). Risk ≥ 0.3085·1.52·min{(Δ/8μ)², Δ/(8μ)} = min{0.0073·(Δ/μ)², 0.058·Δ/μ}.
+
+**Proposition 8, C_app = 1.** With π = (a, 1−a), π′ = (1−a, a), p_± ∝ (e^{∓η}, e^{±η}): the entropies agree, so KL(π‖p₊) − KL(π′‖p₊) = −⟨π − π′, log p₊⟩ = 2η(2a−1), and the sign flips under p₋. D = 2η, η = (Δ/4)·⌊1/μ⌋ ≥ Δ/(8μ). Excess risk ≥ 0.3085·2η·(2a−1) ≥ 0.077·(2a−1)·Δ/μ, which is 0.06·Δ/μ at a = 0.9. No truncation is needed; the bound holds for every Δ > 0 and μ ≤ 1.
+
+**Proposition 11.** Repeat the binary constructions at every state. The table sup-distance is unchanged, so ν ≤ 1 as before. Realizable: KL between the two trajectory laws is H·2ρ·tanh ρ. C_app = 1: local KLs do not depend on the state, so L_±(π) − L_±(π′) = ±H·2η(2a−1). This gives the two bounds stated in §9. I expect this is close to the "repeated binary construction" the review mentions, but I have not seen theirs.
+
+All four bounds are for learners that output an element of Π, hold for any number of queries, and concern only the stated two-point families.
+
+### 13.3 Paired experiment: design × selector × candidate class
+
+Setup (check_round2.py). Ten independent class seeds per class; the seed is the statistical unit. Within a seed, the same 300 standard-normal draws are used for every design. Intervals are paired 95% t-intervals over seeds. Designs: mixprod (d_mix ⊗ q̄, used in §9–12), occmix (true mixture of occupancies), envelope (∝ max_π ν^π), optimal (Γ_T-minimax, mixed 90/10 with occmix for full support; dual gap ≤ 0.68%). Selectors: plug-in, anchor-normalized plug-in (§13.4), log-space least squares, tournament.
+
+Selectors under the mixprod design, mean over seeds (standard error):
+
+| Class | Unit | plug-in | anchor-normalized plug-in | least squares | tournament |
+|---|---|---|---|---|---|
+| Realizable, H=8, 16 policies | σ² | 30.31 (0.74) | 6.86 (0.24) | 6.77 (0.20) | 6.79 (0.19) |
+| Realizable, H=8, 64 policies | σ² | 58.14 (1.52) | 13.43 (0.31) | 13.22 (0.25) | 13.16 (0.30) |
+| Realizable, H=8, 64 policies, wide spread | σ² | 52.43 (1.27) | 11.89 (0.33) | 11.66 (0.32) | 11.81 (0.32) |
+| Misspecified, H=6, σ=0.05 | L* | 4.33 (0.09) | 1.84 (0.02) | 4.58 (0.09) | 1.58 (0.02) |
+| Trap, H=8, σ=0.03 | L* | 2.99 (0.04) | 2.63 (0.06) | 3.09 (0.01) | 3.07 (0.02) |
+
+Effect of the design on the tournament, paired difference against mixprod (negative = better):
+
+| Class | Γ_T/H: mixprod → optimal | optimal − mixprod | envelope − mixprod |
+|---|---|---|---|
+| Realizable, 16 policies | 1.11 → 0.97 | −0.26 [−0.48, −0.04] | +0.35 [0.07, 0.64] |
+| Realizable, 64 policies | 1.29 → 1.07 | −0.21 [−0.62, 0.20] | +0.96 [0.65, 1.26] |
+| Realizable, wide spread | 4.06 → 1.68 | +2.05 [1.55, 2.55] | +5.84 [4.94, 6.73] |
+| Misspecified | 2.66 → 1.72 | +0.11 [0.08, 0.14] | +0.23 [0.18, 0.28] |
+| Trap | 9.03 → 1.02 | +0.07 [0.04, 0.11] | +0.02 [−0.00, 0.05] |
+
+Reading.
+- The Γ_T-optimal design lowers Γ_T by 13% to 89% and improves tournament risk in one class, is indistinguishable in one, and is worse in three. Γ_T is a worst-pair quantity that makes Theorem 14 hold; the pairs that decide the risk are the ones near the best candidate, and the minimax design moves precision away from them. The mixture designs are the robust choice; occmix and mixprod are indistinguishable.
+- Risk does not track Γ_T or the envelope mass across classes either (the wide class has Γ_T/H = 4.06 and lower risk than the narrow one), so these quantities should be read as sufficient conditions, not predictors.
+- The anchor-normalized plug-in removes the plug-in's H² behaviour: it matches least squares and the tournament on realizable classes (paired difference to the plug-in −23 to −45 σ²), is second to the tournament when misspecified (+0.26 [0.21, 0.30] L*), and is better than the tournament on the trap (−0.44 [−0.58, −0.30] L*).
+- Design matters most on the trap, and not for the tournament: with the envelope design, least squares reaches 1.10·L* and the anchor-normalized plug-in 1.33·L*, while the tournament stays at 3.09·L*. The envelope puts precision inside the rarely visited subtree where the trap candidates fail; the tournament's shared-mass weights ignore that subtree whatever the design.
+- No selector or design dominates. These are still five synthetic class families.
+
+### 13.4 Proposition 16: anchor-normalized plug-in
+
+This is the "normalized post-processing" baseline, made linear so that it can be analysed. Fix a public anchor policy q (the experiments use q̄, the state-wise average of the candidates' action laws) and a product-form design w(s, a) = ω(s)·q(a|s). Projecting each state's release onto the first-order normalization constraint at the anchor turns the plug-in into
+
+  Ĵ(π) = Σ_s d^π(s)·[Σ_a π log π − Σ_a q log q − ⟨π_s − q_s, y_s⟩],  E Ĵ(π) = J(π) = L(π) − C_q(π),
+
+with C_q(π) = Σ_s d^π(s)·KL(q_s‖π*_s). The estimator measures each candidate against the anchor on the candidate's own states. Let A_q = max_π C_q(π).
+
+**Proposition 16.** If H·κ·ω(s)·q(a|s) ≥ d^π(s)·max(π, q)(a|s) for all π and z, then with probability ≥ 1 − δ, ι = log(|Π|/δ), the minimizer of Ĵ satisfies
+
+  L(π̂) ≤ 3·L* + 4·A_q + 32·κ·H·(Δ/μ)²·ι.
+
+Proof. Var[Ĵ(π)] = σ²·Σ_z d^π(s)²(π−q)²/w ≤ σ²κH·Σ_s d^π(s)·Σ_a(π−q)²/max(π, q) ≤ 8κHσ²·(L(π) + C_q(π)), by the Hellinger triangle inequality through π*. For the difference of two candidates, Var ≤ 16κHσ²·(x + L* + 2A_q) with x = L(π̂). Then x − C_q(π̂) ≤ L* − C_q(π^b) + √(a₂(x + L* + 2A_q)) with a₂ = 32κHσ²ι, which gives x ≤ 3L* + 4A_q + a₂. ∎
+
+Reading. There is no B̄ and no occupancy-shift noise; the floor is linear in H through κ. The price is the additive 4·A_q: the occupancy-shift term has been turned from noise into a bias that depends on how close the anchor is to the teacher along the candidates' occupancies. A_q is not public, so the bound cannot be evaluated in advance; it is small when a good public anchor exists (a public base model close to the teacher would be the natural choice). In the classes above A_q/L* averaged 0.27 (misspecified) and 0.37 (trap). The variance bound was checked exactly (worst ratio 0.045 ≤ 1; it is loose because κ is a worst-case ratio). This proof is new and unreviewed.
+
+The four selectors now trade off differently:
+
+| Selector | Approximation term | Floor | What can break it |
+|---|---|---|---|
+| Plug-in (T9) | 3·L* | H² | long horizons |
+| Log-space least squares (T10) | log-space L2, not reverse KL | H | misspecification |
+| Shared-mass tournament (T14) | O(1 + B̄)·L* | (1 + B̄)·Γ_T | large pathwise KL (trap); spread-out classes |
+| Anchor-normalized plug-in (P16) | 3·L* + 4·A_q | κ·H | a poor anchor |
+
+### 13.5 Interface with a full DP system (not closed)
+
+- What must be public, or paid for from the privacy budget: the candidate class Π, the anchor, the design w, the reference policy for rollouts, and the noise scale. In every experiment here the candidates are generated around the teacher (tilts of it). That is legitimate for studying the release channel conditionally, but in deployment such a class would itself be teacher-dependent and would have to come from public sources or from releases that are accounted for.
+- Rollouts sampled from the private teacher are releases (§9).
+- The first-order width of §2 and §10 (Δ·min_λ‖c − λp*‖₁) is a local statement about infinitesimal perturbations. It is not a global sensitivity for neighbouring datasets and must not be used to calibrate noise. The only sensitivity used for calibration in this note is the cube bound S∞.
+- The scripts check risk inside the channel. No script checks the privacy of a concrete shard-ensemble teacher on neighbouring datasets.
+
+### 13.6 Scripts
+
+- Every script now records its conditions through checks/_checks.py and exits non-zero on a violated inequality, an out-of-tolerance comparison or a non-finite value: 1,829 assertions in total. One of the new assertions failed on its first run and exposed a wrong check of mine (comparing an approximate optimum, not the certified bound, to the envelope mass).
+- Pairs of candidates that are identical on their shared mass have S̃ = 0; they are now excluded from Γ_T and from the single-pair bound instead of producing 0/0.
+- checks/run_all.py runs everything; with --strict every RuntimeWarning is an error. All six scripts pass in strict mode on Python 3.13.18, NumPy 2.5.3, SciPy 1.18.1 (Linux), which requirements.txt now pins. I could not reproduce the matrix-multiplication warnings the review reports, so their cause in the reviewer's environment is not located.
+- Numbers quoted in earlier sections are unchanged by these edits (no random draws were added to the older scripts).
+
+### 13.7 Not done
+
+- The source paper's theorem numbers and its truncation operator are still unverified against the full text; my attempt to open it this round did not go through.
+- Finite-rollout implementations and checks on neighbouring teachers, which the review lists after the proof repairs.
+- External checking of Lemma 12, Theorem 14, and Propositions 15–17.
+
+### 13.8 Where the direction stands
+
+The review's main thread holds up: within one private-teacher release channel, the noise caused by occupancy shift can be removed in two different ways while keeping a reverse-KL approximation term, by comparing candidates on shared mass (tournament) or by measuring them against a public anchor (anchor-normalized plug-in). Each pays for it differently, in B̄ and class spread or in anchor quality. Precision allocation matters for the per-position variance (§2, §4) but, in these experiments, optimizing the design for the tournament's bound did not reduce risk. Open: whether one rule can avoid both the trap and the anchor term, the corresponding lower bound, and everything in §13.7.
+
