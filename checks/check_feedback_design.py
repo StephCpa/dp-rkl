@@ -15,6 +15,9 @@ Checks
      (Not true in general: see the rare-action instance in check_review.py.)
 """
 import numpy as np
+from _checks import Checker
+
+chk = Checker("check_feedback_design")
 
 rng = np.random.default_rng(20261112)
 
@@ -40,6 +43,9 @@ def check_design_identity(d=12, beta=0.7, Delta=0.3, n=600_000):
     est_s = c[a] / r[a] * (ell[a] + rng.normal(size=n) * Delta / np.sqrt(beta))
     v_det = Delta**2 / beta * np.sum(c**2 / r)
     v_sampling = np.sum(r * (c * ell / r) ** 2) - (c @ ell) ** 2
+    chk.close("1 deterministic variance", est_det.var(), v_det, rel=0.02)
+    chk.close("1 sampled variance", est_s.var(), v_det + v_sampling, rel=0.02)
+    chk.le("1 deterministic bias", abs(est_det.mean() - c @ ell), 0.01)
     print("1. design identity")
     print(f"   det : MC var {est_det.var():.5f}  theory {v_det:.5f}  bias {est_det.mean() - c @ ell:+.4f}")
     print(f"   samp: MC var {est_s.var():.5f}  theory {v_det + v_sampling:.5f}"
@@ -53,6 +59,9 @@ def check_optimal_design(d=40, trials=20000):
     uni = d * np.sum(c**2)
     best_random = min(np.sum(c**2 / w) for w in rng.dirichlet(np.ones(d), size=trials))
     w_star = np.abs(c) / np.abs(c).sum()
+    chk.close("2 optimum equals ||c||_1^2", np.sum(c**2 / w_star), opt, rel=1e-9)
+    chk.le("2 no random design beats the optimum", opt, best_random)
+    chk.le("2 optimum <= uniform", opt, uni)
     print("2. optimal design for one functional (units of Delta^2/beta)")
     print(f"   w∝|c|: {np.sum(c**2 / w_star):.4f} (= ||c||_1^2 = {opt:.4f});"
           f" uniform: {uni:.3f}; best of {trials} random designs: {best_random:.3f}")
@@ -86,13 +95,16 @@ def gamma_numeric(C):
 def check_gamma(d=24):
     print("3. Gamma(C) bounds")
     det = np.eye(d)
-    print(f"   deterministic class: Gamma ≈ {gamma_numeric(det):.2f}  (theory d = {d})")
+    g_det = gamma_numeric(det)
+    chk.close("3 deterministic class Gamma = d", g_det, d, rel=0.01)
+    print(f"   deterministic class: Gamma ≈ {g_det:.2f}  (theory d = {d})")
     for n, scale in [(5, 3.0), (200, 3.0), (200, 0.3)]:
         q0 = softmax(rng.normal(size=d))
         C = np.array([softmax(np.log(q0) + scale * rng.normal(size=d)) for _ in range(n)])
         eb = (C / q0).max()
         mix = C.mean(axis=0)
         g = gamma_numeric(C)
+        chk.between(f"3 Gamma bounds n={n} spread={scale}", g, 1.0 - 1e-9, min(d, n, eb) + 1e-6)
         print(f"   n={n:3d} spread={scale}: Gamma ≈ {g:6.2f}; bounds: lower 1, d={d}, |C|={n},"
               f" e^b={eb:8.2f}; design values: uniform {(C**2 @ np.full(d, d)).max():6.2f},"
               f" mixture {(C**2 @ (1 / mix)).max():6.2f}, q0 {(C**2 @ (1 / q0)).max():6.2f}")
@@ -108,6 +120,7 @@ def check_chi_kl(d=30, trials=200_000):
         lhs = np.sum((P - Q) ** 2 / np.maximum(P, Q), axis=1)
         rhs = 4 * np.sum(P * (np.log(P) - np.log(Q)), axis=1)
         worst = max(worst, float((lhs / rhs).max()))
+    chk.le("4 chi-square/KL inequality", worst, 1.0)
     print(f"4. max over {trials} random pairs of  sum (p-q)^2/max(p,q) / (4 KL(p||q)) = {worst:.4f}  (must be <= 1)")
 
 
@@ -140,6 +153,8 @@ def check_gradient_noise(d=1000):
     g = (xi * p) @ (np.eye(dd) - p)                         # sum_a p_a xi_a (e_a - p)
     a = rng.choice(dd, size=5_000_000, p=p)
     tr_s = float(np.mean(rng.normal(size=a.size) ** 2 * (x**2)[a]))
+    chk.close("5 MC optimal trace", np.sum(g.var(axis=0)), np.sum(p * x) ** 2, rel=0.10)
+    chk.close("5 MC sampled trace", tr_s, 1 - np.sum(p**2), rel=0.10)
     print(f"   MC (d=50, peaked): optimal {np.sum(g.var(axis=0)):.5f} vs theory {np.sum(p * x) ** 2:.5f};"
           f" sampled {tr_s:.5f} vs theory {1 - np.sum(p**2):.5f}")
 
@@ -164,9 +179,9 @@ def check_selection(d=64, n_pol=128, trials=4000):
     for dm in [0.0, 0.005, 0.02, 0.05, 0.1, 0.2]:
         # weighted full release: aggregate noise is exactly N(0, (Delta/mu)^2 / q_a), any T
         y = ell + rng.normal(size=(trials, d)) * dm / np.sqrt(q)
-        r_w = risk[np.argmin(ent[None, :] - y @ Pi.T, axis=1)].mean()
+        r_w = risk[chk.argmin('6 weighted-full scores', ent[None, :] - y @ Pi.T)].mean()
         y = ell + rng.normal(size=(trials, d)) * dm * np.sqrt(d)
-        r_h = risk[np.argmin(ent[None, :] - y @ Pi.T, axis=1)].mean()
+        r_h = risk[chk.argmin('6 homoscedastic scores', ent[None, :] - y @ Pi.T)].mean()
         row = []
         for T in [10**1, 10**2, 10**3, 10**5]:
             n = rng.multinomial(T, q, size=trials) / T                       # empirical action freq
@@ -174,12 +189,15 @@ def check_selection(d=64, n_pol=128, trials=4000):
             centred = ell - np.log(q)
             corr = (n * centred + zeta) @ (Pi / q).T                         # IW estimate of <pi, ell - log q>
             est = ent[None, :] - (Pi @ np.log(q))[None, :] - corr
-            row.append(risk[np.argmin(est, axis=1)].mean())
+            row.append(risk[chk.argmin('6 sampled scores', est)].mean())
+        chk.finite(f"6 risks at Delta/mu={dm}", [r_w, r_h] + row)
+        chk.le(f"6 weighted full <= homoscedastic full at Delta/mu={dm}", r_w, r_h, tol=1e-12)
         if dm >= 0.02:
             floors.append(r_w)
         print(f"   {dm:7.3f}  {r_w:12.5f}  {r_h:11.5f}   " + "  ".join(f"{v:8.5f}" for v in row)
               + f"   | {16 * eb * dm**2 * iota:8.3f}")
     slope = np.polyfit(np.log([0.02, 0.05, 0.1, 0.2]), np.log(floors), 1)[0]
+    chk.between("6 floor slope in Delta/mu", slope, 1.7, 2.2)
     print(f"   log-log slope of weighted-full floor vs Delta/mu: {slope:.2f}  (theory 2 in the realizable case)")
 
 
@@ -190,3 +208,4 @@ if __name__ == "__main__":
     check_chi_kl()
     check_gradient_noise()
     check_selection()
+    chk.finish()

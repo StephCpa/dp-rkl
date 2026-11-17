@@ -10,6 +10,10 @@
       Theorem 14. Mixture design vs the minimax-optimal design, as H grows.
 """
 import numpy as np
+from _checks import Checker
+import _pairs
+
+chk = Checker("check_hybrid")
 from check_tournament import Policy, binary_policy, design, local_kl, pair_tables, pathwise_max
 
 rng = np.random.default_rng(20261116)
@@ -62,7 +66,8 @@ def proof_chain(p, q, t):
         "P(E2) <= sqrt2 * P*(V low)": pE2 / (2 ** 0.5 * pstar_hit + tiny),
         "c0*P*(V low) <= E* phi(V_H)": C0 * pstar_hit / (e_phi_V + tiny),
         "E* phi(V_H) <= L(pi')": e_phi_V / (L_q + tiny),
-        "final: L <= (2+79B)T + 56B L'": L_p / ((2 + 79 * B) * T + 56 * B * L_q + tiny),
+        "c0*P(E1) <= 2T (constant 2/c0 = 79.008 < 80)": C0 * pE1 / (2 * T + tiny),
+        "final: L <= (2+80B)T + 56B L'": L_p / ((2 + 80 * B) * T + 56 * B * L_q + tiny),
     }
 
 
@@ -109,6 +114,10 @@ def check_proof_chain(n_instances=400):
     print(f"S1. proof of Lemma 12, worst value of each step over {2 * n_instances} ordered pairs"
           " (ratios LHS/RHS must be <= 1; the identity must be ~0)")
     for name, val in worst.items():
+        if "abs diff" in name:
+            chk.le("S1 " + name, val, 1e-9)
+        else:
+            chk.le("S1 " + name, val, 1.0)
         print(f"      {name:42s} {val:.3e}" if "abs diff" in name else f"      {name:42s} {val:.4f}")
 
 
@@ -120,8 +129,9 @@ def run_selectors(pols, t, sigma, trials, w, delta=0.1):
     T, pairs, C, const, kap = pair_tables(pols, t, w)
     y = t.logp + rng.normal(size=(trials, w.size)) * sigma / np.sqrt(w)
     Lhat = np.sum(NU * LP, axis=1)[None, :] - y @ NU.T
-    i_erm = np.argmin(Lhat, axis=1)
+    i_erm = chk.argmin('plug-in scores', Lhat)
     D = const[None, :] - y @ C.T
+    chk.finite('tournament pair statistics', D)
     full = np.zeros((trials, n, n))
     full[:, pairs[:, 0], pairs[:, 1]] = D
     full[:, pairs[:, 1], pairs[:, 0]] = -D
@@ -178,6 +188,10 @@ def check_trap(Hs=(4, 8), sigmas=(0.0, 0.01, 0.03, 0.1, 0.3), trials=1000):
         for s in sigmas:
             risk, sel, surv = run_selectors(pols, t, s, trials if s > 0 else 1, w)
             Ls = risk.min()
+            chk.finite(f"S2 risks H={H} sigma={s}", [x.mean() for x in sel])
+            if s == 0.0:
+                chk.close(f"S2 noiseless plug-in returns L*, H={H}", sel[0].mean(), Ls, rel=1e-9)
+                chk.close(f"S3 noiseless hybrid returns L*, H={H}", sel[2].mean(), Ls, rel=1e-9)
             if first:
                 print(f"   H={H}: L* = {Ls:.4f} (good family); best trap candidate has risk {risk[8:].min() / Ls:.1f} x L*;"
                       f" B = {B:.2f}")
@@ -224,7 +238,7 @@ def check_hybrid_elsewhere(trials=1000):
 
 # ---------------------------------------------------------------- S4
 def gamma_T(C, S_tilde, w):
-    return float(((C**2 @ (1.0 / w)) / S_tilde).max())
+    return float(((C**2 @ (1.0 / w)) / S_tilde).max())       # callers pass only valid, rescaled pairs
 
 
 def optimal_design(C, S_tilde, w0, iters=400, eta=0.5):
@@ -262,14 +276,14 @@ def check_design(n_pol=64):
         else:
             t, pols = misspecified_class(H)
         w = design(pols)
-        T, pairs, C, const, kap = pair_tables(pols, t, w)
-        S = []
-        for i, j in pairs:
-            m = np.minimum(pols[i].dS, pols[j].dS)
-            S.append(m @ np.sum((pols[i].A - pols[j].A) ** 2 / np.maximum(pols[i].A, pols[j].A), axis=1))
-        S = np.array(S)
+        T, pairs, C_raw, const, kap = pair_tables(pols, t, w)
+        _, _, _, Cn, Sn, valid = _pairs.pair_struct(pols)          # scale-invariant; keeps near-duplicate pairs
+        C, S = Cn[valid], Sn[valid]
         lower = float((np.abs(C).sum(axis=1) ** 2 / S).max())
         w_opt, g_opt = optimal_design(C, S, w)
+        chk.le(f"S4 optimal <= mixture, {kind} H={H}", g_opt, gamma_T(C, S, w), tol=1e-9)
+        chk.le(f"S4 single-pair lower bound <= optimal, {kind} H={H}", lower, g_opt, tol=1e-6 * g_opt)
+        chk.le(f"S4 Gamma_T(mixture) <= kappa*H, {kind} H={H}", gamma_T(C, S, w), kap * H, tol=1e-6 * kap * H)
         print(f"     {kind:12s} {H:3d}   {kap * H:14.2f}   {gamma_T(C, S, w):14.2f}   {g_opt:14.2f}   {lower:20.2f}"
               f"   {g_opt / H:12.2f}")
 
@@ -279,3 +293,4 @@ if __name__ == "__main__":
     check_trap()
     check_hybrid_elsewhere()
     check_design()
+    chk.finish()
